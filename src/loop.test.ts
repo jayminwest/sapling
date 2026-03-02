@@ -236,9 +236,7 @@ describe("runLoop", () => {
 
 		expect(result.exitReason).toBe("task_complete");
 		// The second LLM call should have received the tool result in its messages
-		const mockClientWithInspection = client as LlmClient & { calls: typeof responses };
-		const secondCall = (mockClientWithInspection as unknown as { calls: { messages: Message[] }[] })
-			.calls[1];
+		const secondCall = (client as unknown as { calls: { messages: Message[] }[] }).calls[1];
 		expect(secondCall).toBeDefined();
 	});
 

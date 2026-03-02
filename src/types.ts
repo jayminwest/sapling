@@ -37,7 +37,7 @@ export interface LlmClient {
 export interface ToolDefinition {
 	name: string;
 	description: string;
-	input_schema: JsonSchema;
+	input_schema: Record<string, unknown>;
 }
 
 export interface JsonSchema {
@@ -67,4 +67,113 @@ export interface LoopResult {
 	totalInputTokens: number;
 	totalOutputTokens: number;
 	error?: string;
+}
+
+// ─── Config Types ─────────────────────────────────────────────────────────────
+
+export type LlmBackend = "cc" | "sdk";
+
+export interface ContextBudget {
+	windowSize: number;
+	allocations: {
+		systemPrompt: number;
+		archiveSummary: number;
+		recentHistory: number;
+		currentTurn: number;
+		headroom: number;
+	};
+}
+
+export interface SaplingConfig {
+	model: string;
+	backend: LlmBackend;
+	maxTurns: number;
+	cwd: string;
+	verbose: boolean;
+	quiet: boolean;
+	contextWindow: number;
+	contextBudget: ContextBudget;
+}
+
+export interface RunOptions {
+	systemPromptFile?: string;
+	model?: string;
+	backend?: LlmBackend;
+	maxTurns?: number;
+	verbose?: boolean;
+	quiet?: boolean;
+}
+
+// ─── Context Types ────────────────────────────────────────────────────────────
+
+export interface BudgetEntry {
+	used: number;
+	budget: number;
+}
+
+export interface BudgetUtilization {
+	systemPrompt: BudgetEntry;
+	archiveSummary: BudgetEntry;
+	recentHistory: BudgetEntry;
+	currentTurn: BudgetEntry;
+	headroom: BudgetEntry;
+	total: BudgetEntry;
+}
+
+export interface ContextArchive {
+	workSummary: string;
+	decisions: string[];
+	modifiedFiles: Map<string, string>;
+	fileHashes: Map<string, string>;
+	resolvedErrors: string[];
+}
+
+export interface ContextManager {
+	process(messages: Message[], usage: TokenUsage, currentFiles: string[]): Message[];
+	getUtilization(): BudgetUtilization;
+	getArchive(): ContextArchive;
+}
+
+// ─── Tool Types ───────────────────────────────────────────────────────────────
+
+export interface ToolResult {
+	content: string;
+	isError?: boolean;
+	metadata?: {
+		tokensEstimate?: number;
+		filePath?: string;
+		truncated?: boolean;
+	};
+}
+
+export interface Tool {
+	name: string;
+	description: string;
+	inputSchema: JsonSchema;
+	execute(input: Record<string, unknown>, cwd: string): Promise<ToolResult>;
+	toDefinition(): ToolDefinition;
+}
+
+export interface ToolRegistry {
+	register(tool: Tool): void;
+	get(name: string): Tool | undefined;
+	list(): Tool[];
+	toDefinitions(): ToolDefinition[];
+}
+
+// ─── Scoring Types ────────────────────────────────────────────────────────────
+
+export type MessageCategory = "task" | "history" | "current";
+
+export interface ScoredMessage {
+	message: Message;
+	score: number;
+	category: MessageCategory;
+	tokenCount: number;
+	age: number;
+	metadata: {
+		filesReferenced: string[];
+		isErrorContext: boolean;
+		hasUnresolvedQuestion: boolean;
+	};
 }

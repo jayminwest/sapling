@@ -2,118 +2,16 @@
  * CLI run command handler for Sapling.
  *
  * Exports runCommand() which wires together the LLM client, tool registry,
- * and context manager, then calls runLoop(). The Commander.js CLI entry point
- * (src/index.ts) imports and calls this function.
- *
- * NOTE: createClient / createToolRegistry / createContextManager are stubs
- * that will be replaced with real implementations at merge time once the
- * client, tools, and context modules land. The stub implementations provide
- * enough to run the loop with basic no-op behavior.
+ * and context manager, then calls runLoop().
  */
 
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { AnthropicClient, CcClient } from "./client/index.ts";
+import { createContextManager } from "./context/manager.ts";
 import { runLoop } from "./loop.ts";
-import type {
-	BudgetUtilization,
-	ContextArchive,
-	ContextManager,
-	LlmClient,
-	LlmRequest,
-	LlmResponse,
-	LoopOptions,
-	Message,
-	RunOptions,
-	SaplingConfig,
-	TokenUsage,
-	Tool,
-	ToolDefinition,
-	ToolRegistry,
-} from "./types.ts";
-
-// ─── Stub Factories ───────────────────────────────────────────────────────────
-// These will be replaced by real imports at merge time:
-//   createClient     ← src/client/index.ts
-//   createToolRegistry ← src/tools/index.ts
-//   createContextManager ← src/context/manager.ts
-
-/**
- * Create an LLM client for the given backend.
- * STUB: replaced at merge time by real client implementations.
- */
-function createClient(config: SaplingConfig): LlmClient {
-	// TODO(merge): import { createCcClient, createSdkClient } from "./client/index.ts"
-	// return config.backend === "cc" ? createCcClient(config) : createSdkClient(config);
-	return {
-		id: `stub-${config.backend}`,
-		call: async (_request: LlmRequest): Promise<LlmResponse> => {
-			throw new Error(
-				`LLM client stub: real client not yet wired (backend: ${config.backend}). ` +
-					"Waiting for client module to land.",
-			);
-		},
-		estimateTokens: (text: string): number => Math.ceil(text.length / 4),
-	};
-}
-
-/**
- * Create a tool registry populated with all standard Sapling tools.
- * STUB: replaced at merge time by real tool implementations.
- */
-function createToolRegistry(_config: SaplingConfig): ToolRegistry {
-	// TODO(merge): import { buildDefaultRegistry } from "./tools/index.ts"
-	// return buildDefaultRegistry(config.cwd);
-	const tools = new Map<string, Tool>();
-	return {
-		register(tool: Tool): void {
-			tools.set(tool.name, tool);
-		},
-		get(name: string): Tool | undefined {
-			return tools.get(name);
-		},
-		list(): Tool[] {
-			return [...tools.values()];
-		},
-		toDefinitions(): ToolDefinition[] {
-			return [...tools.values()].map((t) => t.toDefinition());
-		},
-	};
-}
-
-/**
- * Create a context manager with the given budget configuration.
- * STUB: replaced at merge time by real context manager implementation.
- */
-function createContextManager(_config: SaplingConfig): ContextManager {
-	// TODO(merge): import { buildContextManager } from "./context/manager.ts"
-	// return buildContextManager(config.contextBudget);
-	return {
-		process(messages: Message[], _usage: TokenUsage, _files: string[]): Message[] {
-			// Pass-through: no pruning until real context manager lands
-			return messages;
-		},
-		getUtilization(): BudgetUtilization {
-			const zero = { used: 0, budget: 0 };
-			return {
-				systemPrompt: zero,
-				archiveSummary: zero,
-				recentHistory: zero,
-				currentTurn: zero,
-				headroom: zero,
-				total: zero,
-			};
-		},
-		getArchive(): ContextArchive {
-			return {
-				workSummary: "",
-				decisions: [],
-				modifiedFiles: new Map(),
-				fileHashes: new Map(),
-				resolvedErrors: [],
-			};
-		},
-	};
-}
+import { createDefaultRegistry } from "./tools/index.ts";
+import type { LlmClient, LoopOptions, RunOptions, SaplingConfig } from "./types.ts";
 
 // ─── Default System Prompt ────────────────────────────────────────────────────
 
@@ -122,6 +20,15 @@ You are Sapling, a coding agent. You have access to tools for reading and writin
 running shell commands, and searching code. Work methodically: understand the task,
 explore relevant code, make changes, verify results. When done, say what you accomplished.
 `;
+
+// ─── Internal Factories ───────────────────────────────────────────────────────
+
+function createClient(config: SaplingConfig): LlmClient {
+	if (config.backend === "sdk") {
+		return new AnthropicClient({ model: config.model });
+	}
+	return new CcClient({ model: config.model, cwd: config.cwd });
+}
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -150,8 +57,11 @@ export async function runCommand(
 	}
 
 	const client = createClient(config);
-	const tools = createToolRegistry(config);
-	const contextManager = createContextManager(config);
+	const tools = createDefaultRegistry();
+	const contextManager = createContextManager({
+		budget: config.contextBudget,
+		verbose: config.verbose,
+	});
 
 	const loopOptions: LoopOptions = {
 		task: prompt,

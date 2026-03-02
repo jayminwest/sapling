@@ -1,5 +1,8 @@
 #!/usr/bin/env bun
 import { Command } from "commander";
+import { runCommand } from "./cli.ts";
+import { loadConfig } from "./config.ts";
+import type { LlmBackend, RunOptions } from "./types.ts";
 
 export const VERSION = "0.1.0";
 
@@ -21,9 +24,37 @@ program
 	.option("--verbose", "Log context manager decisions")
 	.option("--json", "NDJSON event output on stdout")
 	.option("-q, --quiet", "Suppress non-essential output")
-	.action((_prompt, _options) => {
-		console.error("sapling run: not yet implemented");
-		process.exit(1);
+	.action(async (prompt: string, options: Record<string, string | boolean | undefined>) => {
+		const opts: RunOptions = {
+			systemPromptFile: options.systemPromptFile as string | undefined,
+			model: options.model as string | undefined,
+			backend: options.backend as LlmBackend | undefined,
+			maxTurns: options.maxTurns ? parseInt(options.maxTurns as string, 10) : undefined,
+			verbose: options.verbose as boolean | undefined,
+			quiet: options.quiet as boolean | undefined,
+		};
+
+		const config = loadConfig({
+			...(opts.model ? { model: opts.model } : {}),
+			...(opts.backend ? { backend: opts.backend } : {}),
+			...(opts.maxTurns ? { maxTurns: opts.maxTurns } : {}),
+			...(opts.verbose !== undefined ? { verbose: opts.verbose } : {}),
+			...(opts.quiet !== undefined ? { quiet: opts.quiet } : {}),
+			cwd: (options.cwd as string | undefined) ?? process.cwd(),
+		});
+
+		const result = await runCommand(prompt, opts, config);
+
+		if (!config.quiet) {
+			console.error(
+				`\nDone: ${result.exitReason} after ${result.totalTurns} turn(s) ` +
+					`(${result.totalInputTokens} in / ${result.totalOutputTokens} out tokens)`,
+			);
+		}
+
+		if (result.exitReason === "error") {
+			process.exit(1);
+		}
 	});
 
 program

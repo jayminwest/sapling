@@ -18,6 +18,10 @@ export class ToolRegistry {
 		this.tools = new Map(tools.map((t) => [t.name, t]));
 	}
 
+	register(tool: Tool): void {
+		this.tools.set(tool.name, tool);
+	}
+
 	get(name: string): Tool | undefined {
 		return this.tools.get(name);
 	}
@@ -30,7 +34,7 @@ export class ToolRegistry {
 		return Array.from(this.tools.values());
 	}
 
-	definitions(): ToolDefinition[] {
+	toDefinitions(): ToolDefinition[] {
 		return this.list().map((t) => t.toDefinition());
 	}
 
