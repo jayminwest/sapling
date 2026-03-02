@@ -35,9 +35,9 @@ describe("ToolRegistry", () => {
 		expect(registry.list()).toHaveLength(2);
 	});
 
-	it("definitions() returns ToolDefinition for each tool", () => {
+	it("toDefinitions() returns ToolDefinition for each tool", () => {
 		const registry = new ToolRegistry([readTool, writeTool]);
-		const defs = registry.definitions();
+		const defs = registry.toDefinitions();
 		expect(defs).toHaveLength(2);
 		expect(defs.map((d) => d.name)).toContain("read");
 		expect(defs.map((d) => d.name)).toContain("write");
