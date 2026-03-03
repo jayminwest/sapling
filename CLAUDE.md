@@ -49,7 +49,7 @@ Runs every turn via `SaplingContextManager.process()`:
 
 ### Benchmarking (`src/bench/`)
 
-Deterministic context pipeline benchmarking: `harness.ts` runs scenarios through the pipeline, `scenarios.ts` defines 14 predefined message sequences covering common agent workloads.
+Deterministic context pipeline benchmarking: `harness.ts` runs scenarios through the pipeline, `scenarios.ts` defines 3 predefined message sequences covering common agent workloads (SHORT/10 turns, MEDIUM/30 turns, LONG/100 turns).
 
 ### Logging (`src/logging/`)
 
