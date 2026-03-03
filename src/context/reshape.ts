@@ -35,22 +35,26 @@ export function reshapeMessages(
 	const archiveContent = renderArchive(archive);
 	if (archiveContent.trim()) {
 		const archiveTokens = estimateTokens(archiveContent);
+		let archiveText: string;
 		if (archiveTokens <= archiveBudget) {
-			const archiveMessage: Message = {
-				role: "user",
-				content: archiveContent,
-			};
-			result.push(archiveMessage);
+			archiveText = archiveContent;
 		} else {
 			// Truncate archive to fit budget
 			const truncated = truncateToTokenBudget(archiveContent, archiveBudget);
-			if (truncated.trim()) {
-				const archiveMessage: Message = {
-					role: "user",
-					content: `${truncated}\n\n[Archive truncated to fit context budget]`,
-				};
-				result.push(archiveMessage);
-			}
+			archiveText = truncated.trim()
+				? `${truncated}\n\n[Archive truncated to fit context budget]`
+				: "";
+		}
+
+		if (archiveText.trim()) {
+			// Insert synthetic assistant acknowledgment before the archive user message.
+			// This prevents consecutive user messages (task then archive) which violates
+			// the Anthropic API alternating-role requirement.
+			result.push({
+				role: "assistant",
+				content: [{ type: "text", text: "[Acknowledged]" }],
+			});
+			result.push({ role: "user", content: archiveText });
 		}
 	}
 
@@ -87,17 +91,21 @@ export function splitMessageSegments(
 
 	const taskMessage = messages[0] ?? null;
 
-	// Filter out previously-injected archive messages
-	// They are user messages starting with "## Work So Far" or "## Files Modified"
+	// Filter out previously-injected archive messages and synthetic acknowledgments.
 	const isArchiveMessage = (m: Message): boolean => {
-		if (m.role !== "user") return false;
-		if (typeof m.content === "string") {
+		// User-side archive injection messages
+		if (m.role === "user" && typeof m.content === "string") {
 			return (
 				m.content.startsWith("## Work So Far") ||
 				m.content.startsWith("## Files Modified") ||
 				m.content.startsWith("## Key Decisions") ||
 				m.content.includes("[Archive truncated to fit context budget]")
 			);
+		}
+		// Synthetic assistant acknowledgment inserted before archive messages
+		if (m.role === "assistant" && Array.isArray(m.content) && m.content.length === 1) {
+			const block = m.content[0];
+			return block?.type === "text" && block.text === "[Acknowledged]";
 		}
 		return false;
 	};

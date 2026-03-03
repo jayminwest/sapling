@@ -147,11 +147,51 @@ describe("reshapeMessages", () => {
 		// Very small archive budget (10 tokens)
 		const result = reshapeMessages(task, archive, [], [], 10);
 		// Either no archive or a truncated one
-		if (result.length > 1) {
-			const archiveMsg = result[1];
+		if (result.length > 2) {
+			const archiveMsg = result[2];
 			if (archiveMsg && typeof archiveMsg.content === "string") {
 				expect(archiveMsg.content).toContain("truncated");
 			}
+		}
+	});
+
+	it("inserts assistant ack between task and archive", () => {
+		const task = makeUserMsg("task description");
+		const archive: ContextArchive = {
+			workSummary: "Turn 1: read(foo.ts) → 10 lines",
+			decisions: [],
+			modifiedFiles: new Map(),
+			fileHashes: new Map(),
+			resolvedErrors: [],
+		};
+		const result = reshapeMessages(task, archive, [], [], 20_000);
+		// result[0] = task, result[1] = ack (assistant), result[2] = archive (user)
+		expect(result).toHaveLength(3);
+		expect(result[0]).toBe(task);
+		expect(result[1]?.role).toBe("assistant");
+		const ackMsg = result[1];
+		if (ackMsg && Array.isArray(ackMsg.content)) {
+			expect(ackMsg.content[0]).toMatchObject({ type: "text", text: "[Acknowledged]" });
+		}
+		expect(result[2]?.role).toBe("user");
+	});
+
+	it("does not produce consecutive user messages when archive is present", () => {
+		const task = makeUserMsg("task description");
+		const archive: ContextArchive = {
+			workSummary: "Turn 1: read(foo.ts) → 10 lines",
+			decisions: [],
+			modifiedFiles: new Map(),
+			fileHashes: new Map(),
+			resolvedErrors: [],
+		};
+		const hist = makeAssistantMsg("history response");
+		const curr = makeUserMsg("current tool result");
+		const result = reshapeMessages(task, archive, [hist], [curr], 20_000);
+
+		// Verify no two adjacent messages share the same role
+		for (let i = 0; i < result.length - 1; i++) {
+			expect(result[i]?.role).not.toBe(result[i + 1]?.role);
 		}
 	});
 });
