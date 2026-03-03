@@ -44,6 +44,7 @@ interface CcRawResponse {
 	type: string;
 	subtype?: string;
 	result?: string | Record<string, unknown>;
+	structured_output?: Record<string, unknown>;
 	usage?: {
 		input_tokens?: number;
 		output_tokens?: number;
@@ -156,30 +157,36 @@ export class CcClient implements LlmClient {
 			type: raw.type,
 			subtype: raw.subtype,
 			hasResult: raw.result !== undefined,
+			hasStructuredOutput: raw.structured_output !== undefined,
 			resultType: typeof raw.result,
 			keys: Object.keys(raw),
 		});
 
-		if (!raw.result) {
+		if (!raw.structured_output && !raw.result) {
 			throw new ClientError(
 				`CC subprocess response missing result field. Response: ${stdout.slice(0, 500)}`,
 				"CC_INVALID_RESPONSE",
 			);
 		}
 
+		// Prefer structured_output (current claude CLI field) over result (legacy).
+		// structured_output is an already-parsed object from --json-schema responses.
 		// result may be:
 		// 1. A JSON string conforming to CC_SCHEMA (structured response)
 		// 2. An already-parsed object (when --json-schema returns an object)
 		// 3. Plain text (when --json-schema is ignored, e.g. with --tools "")
 		let structured: CcStructuredResponse;
-		if (typeof raw.result === "object") {
+		if (raw.structured_output !== undefined) {
+			structured = raw.structured_output as unknown as CcStructuredResponse;
+		} else if (typeof raw.result === "object") {
 			structured = raw.result as unknown as CcStructuredResponse;
 		} else {
+			const resultStr = raw.result as string;
 			try {
-				structured = JSON.parse(raw.result) as CcStructuredResponse;
+				structured = JSON.parse(resultStr) as CcStructuredResponse;
 			} catch {
 				// Plain text response — treat as text_response with no tool calls
-				structured = { thinking: "", text_response: raw.result };
+				structured = { thinking: "", text_response: resultStr };
 			}
 		}
 

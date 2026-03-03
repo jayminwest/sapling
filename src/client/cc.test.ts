@@ -37,6 +37,17 @@ function makeCcOutput(structured: unknown, usage?: unknown, model?: string): str
 	return JSON.stringify({
 		type: "result",
 		subtype: "success",
+		structured_output: structured,
+		result: "Plain text summary (ignored when structured_output present)",
+		usage: usage ?? { input_tokens: 10, output_tokens: 5 },
+		model: model ?? "claude-sonnet-4-6",
+	});
+}
+
+function makeCcOutputLegacy(structured: unknown, usage?: unknown, model?: string): string {
+	return JSON.stringify({
+		type: "result",
+		subtype: "success",
 		result: JSON.stringify(structured),
 		usage: usage ?? { input_tokens: 10, output_tokens: 5 },
 		model: model ?? "claude-sonnet-4-6",
@@ -172,6 +183,56 @@ describe("CcClient", () => {
 				tools: [{ name: "read", description: "read file", input_schema: {} }],
 			});
 			expect(result.stopReason).toBe("tool_use");
+		});
+
+		it("prefers structured_output over result when both present", async () => {
+			// structured_output has tool_calls; result has plain text — structured_output must win
+			const structured = {
+				thinking: "Using structured_output field.",
+				tool_calls: [{ name: "bash", input: { command: "echo hi" } }],
+			};
+			spawnSpy.mockReturnValue(makeFakeProcess({ exitCode: 0, stdout: makeCcOutput(structured) }));
+
+			const client = new CcClient();
+			const result = await client.call({
+				...baseRequest,
+				tools: [{ name: "bash", description: "run bash", input_schema: {} }],
+			});
+
+			expect(result.stopReason).toBe("tool_use");
+			const toolBlock = result.content.find((b) => b.type === "tool_use");
+			expect(toolBlock).toBeDefined();
+			if (toolBlock?.type === "tool_use") {
+				expect(toolBlock.name).toBe("bash");
+			}
+		});
+
+		it("falls back to result field when structured_output absent (legacy)", async () => {
+			const structured = {
+				thinking: "Legacy path.",
+				text_response: "Done via legacy result field.",
+			};
+			spawnSpy.mockReturnValue(
+				makeFakeProcess({ exitCode: 0, stdout: makeCcOutputLegacy(structured) }),
+			);
+
+			const client = new CcClient();
+			const result = await client.call(baseRequest);
+
+			expect(result.stopReason).toBe("end_turn");
+			const textBlocks = result.content.filter((b) => b.type === "text");
+			const texts = textBlocks.map((b) => (b.type === "text" ? b.text : ""));
+			expect(texts).toContain("Done via legacy result field.");
+		});
+
+		it("throws CC_INVALID_RESPONSE when both structured_output and result absent", async () => {
+			const payload = JSON.stringify({ type: "result", subtype: "success" });
+			spawnSpy.mockReturnValue(makeFakeProcess({ exitCode: 0, stdout: payload }));
+
+			const client = new CcClient();
+			await expect(client.call(baseRequest)).rejects.toMatchObject({
+				code: "CC_INVALID_RESPONSE",
+			});
 		});
 	});
 });
