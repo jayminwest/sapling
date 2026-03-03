@@ -2,23 +2,25 @@
  * Relevance scoring for messages in the context window.
  *
  * Each message receives a score from 0.0 (irrelevant) to 1.0 (critical).
- * The scorer uses five weighted signals:
+ * The scorer uses six weighted signals:
  *   - Recency (0.30): recent turns score higher
  *   - File overlap (0.25): messages about files currently being worked on
  *   - Error context (0.20): error messages and surrounding context
- *   - Decision content (0.15): messages containing explicit decisions
- *   - Size penalty (0.10): larger messages are penalized
+ *   - Decision content (0.12): messages containing explicit decisions
+ *   - Unresolved question (0.08): assistant messages ending with open questions
+ *   - Size penalty (0.05): larger messages are penalized
  */
 
 import type { ContentBlock, Message, MessageCategory, ScoredMessage } from "../types.ts";
 import { estimateMessageTokens } from "./measure.ts";
 
-// Score weights
+// Score weights (must sum to 1.0)
 const WEIGHT_RECENCY = 0.3;
 const WEIGHT_FILE_OVERLAP = 0.25;
 const WEIGHT_ERROR_CONTEXT = 0.2;
-const WEIGHT_DECISION = 0.15;
-const WEIGHT_SIZE = 0.1;
+const WEIGHT_DECISION = 0.12;
+const WEIGHT_UNRESOLVED = 0.08; // bonus for messages with open questions
+const WEIGHT_SIZE = 0.05;
 
 // Recency: messages from the last 3 turns score 1.0; score < 0.3 at 10+ turns
 const RECENCY_HALF_LIFE = 5; // turns for score to drop by half
@@ -198,12 +200,14 @@ export function scoreMessage(
 	const decisionSignal = isDecision ? 1.0 : 0.0;
 	const sizeSignal = sizePenaltyScore(tokenCount);
 
-	// Weighted sum
+	// Weighted sum (weights sum to 1.0)
+	const unresolvedSignal = unresolved ? 1.0 : 0.0;
 	const score =
 		WEIGHT_RECENCY * recency +
 		WEIGHT_FILE_OVERLAP * fileOverlap +
 		WEIGHT_ERROR_CONTEXT * errorSignal +
 		WEIGHT_DECISION * decisionSignal +
+		WEIGHT_UNRESOLVED * unresolvedSignal +
 		WEIGHT_SIZE * sizeSignal;
 
 	return {

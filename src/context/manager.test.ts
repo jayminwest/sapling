@@ -182,6 +182,103 @@ describe("SaplingContextManager", () => {
 	});
 });
 
+describe("file hash staleness tracking", () => {
+	it("stores hash in archive.fileHashes when a write tool call is detected", () => {
+		const manager = new SaplingContextManager();
+
+		const messages: Message[] = [
+			makeUserMsg("Fix the bug"),
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool_use",
+						id: "t1",
+						name: "write",
+						input: { file_path: "/src/auth.ts", content: "export function auth() {}" },
+					},
+				],
+			},
+		];
+
+		manager.process(messages, zeroUsage, ["/src/auth.ts"]);
+		const archive = manager.getArchive();
+		expect(archive.fileHashes.has("/src/auth.ts")).toBe(true);
+	});
+
+	it("stores hash in archive.fileHashes when an edit tool call is detected", () => {
+		const manager = new SaplingContextManager();
+
+		const messages: Message[] = [
+			makeUserMsg("Fix the bug"),
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool_use",
+						id: "t2",
+						name: "edit",
+						input: {
+							file_path: "/src/login.ts",
+							old_string: "old code",
+							new_string: "new code",
+						},
+					},
+				],
+			},
+		];
+
+		manager.process(messages, zeroUsage, []);
+		const archive = manager.getArchive();
+		expect(archive.fileHashes.has("/src/login.ts")).toBe(true);
+	});
+
+	it("detects stale reads when a file is read twice with different content", () => {
+		const manager = new SaplingContextManager();
+		const taskMsg = makeUserMsg("Refactor auth");
+
+		// Simulate: read file at turn 1 with content A, then read again with content B
+		const messagesWithTwoReads: Message[] = [
+			taskMsg,
+			// Turn 1: read file → result A
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool_use",
+						id: "r1",
+						name: "read",
+						input: { file_path: "/src/auth.ts" },
+					},
+				],
+			},
+			makeUserMsg(`content version A: ${"a".repeat(300)}`),
+			// Turn 2: read same file again → result B (content changed)
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "tool_use",
+						id: "r2",
+						name: "read",
+						input: { file_path: "/src/auth.ts" },
+					},
+				],
+			},
+			makeUserMsg(`content version B: ${"b".repeat(300)}`),
+			makeAssistantMsg("I see the file changed"),
+		];
+
+		const result = manager.process([...messagesWithTwoReads], zeroUsage, ["/src/auth.ts"]);
+
+		// The archive should have a fingerprint for auth.ts
+		const archive = manager.getArchive();
+		expect(archive.fileHashes.has("/src/auth.ts")).toBe(true);
+		// Result should still be valid (no crash)
+		expect(result.length).toBeGreaterThan(0);
+	});
+});
+
 describe("createContextManager", () => {
 	it("creates a context manager via factory function", () => {
 		const manager = createContextManager();

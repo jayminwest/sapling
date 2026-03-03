@@ -137,7 +137,10 @@ export class SaplingContextManager implements ContextManager {
 
 		// 6. PRUNE — apply pruning strategies
 		const budgets = computeBudgets(this.budget);
-		const modifiedFiles = new Set(this.archive.modifiedFiles.keys());
+
+		// Merge explicit write/edit modifications with hash-detected staleness
+		const hashStaleFiles = this.detectHashStaleFiles([...historyMessages, ...currentMessages]);
+		const modifiedFiles = new Set([...this.archive.modifiedFiles.keys(), ...hashStaleFiles]);
 
 		const prunedHistory = pruneMessages(
 			allHistoryScored,
@@ -230,6 +233,8 @@ export class SaplingContextManager implements ContextManager {
 
 	/**
 	 * Detect file write/edit operations in the current turn and update the archive.
+	 * Also hashes the new content and stores it in archive.fileHashes so that
+	 * subsequent read-staleness checks can detect content changes.
 	 */
 	private detectFileModifications(currentMessages: Message[]): void {
 		for (const msg of currentMessages) {
@@ -245,10 +250,85 @@ export class SaplingContextManager implements ContextManager {
 						const description =
 							block.name === "write" ? "Created/overwritten by agent" : "Edited by agent";
 						this.archive = recordFileModification(this.archive, filePath, description);
+
+						// Hash the written/edited content for downstream staleness detection.
+						const rawContent =
+							block.name === "write"
+								? String(block.input.content ?? "")
+								: String(block.input.new_string ?? "");
+						const hash = String(Bun.hash(rawContent));
+						const updatedHashes = new Map(this.archive.fileHashes);
+						updatedHashes.set(filePath, hash);
+						this.archive = { ...this.archive, fileHashes: updatedHashes };
 					}
 				}
 			}
 		}
+	}
+
+	/**
+	 * Compute a lightweight fingerprint of text content for read-staleness detection.
+	 * Uses length + head + tail; not cryptographic.
+	 */
+	private static fingerprint(content: string): string {
+		const len = content.length;
+		const head = content.slice(0, 120);
+		const tail = len > 120 ? content.slice(-60) : "";
+		return `${len}:${head}:${tail}`;
+	}
+
+	/**
+	 * Return the first text block content from a user message, or null.
+	 */
+	private static firstText(message: Message): string | null {
+		if (typeof message.content === "string") return message.content || null;
+		for (const block of message.content) {
+			if (block.type === "text") return block.text;
+		}
+		return null;
+	}
+
+	/**
+	 * Scan message history for repeated reads of the same file with different content.
+	 * This catches staleness caused by bash commands or other out-of-band writes
+	 * that are not tracked via detectFileModifications.
+	 *
+	 * Updates archive.fileHashes with the latest fingerprint for each file seen.
+	 * Returns a set of file paths whose read history contains stale content.
+	 */
+	private detectHashStaleFiles(messages: Message[]): Set<string> {
+		const staleFiles = new Set<string>();
+		// Seed with persisted fingerprints from prior turns
+		const latestFingerprints = new Map<string, string>(this.archive.fileHashes);
+
+		for (let i = 0; i < messages.length - 1; i++) {
+			const msg = messages[i];
+			if (!msg || msg.role !== "assistant") continue;
+			if (typeof msg.content === "string") continue;
+
+			for (const block of msg.content) {
+				if (block.type !== "tool_use" || block.name !== "read") continue;
+				const path = block.input.file_path;
+				if (typeof path !== "string") continue;
+
+				// The next message carries the tool result
+				const nextMsg = messages[i + 1];
+				if (!nextMsg || nextMsg.role !== "user") continue;
+				const content = SaplingContextManager.firstText(nextMsg);
+				if (!content) continue;
+
+				const fp = SaplingContextManager.fingerprint(content);
+				const previous = latestFingerprints.get(path);
+				if (previous !== undefined && previous !== fp) {
+					staleFiles.add(path);
+				}
+				latestFingerprints.set(path, fp);
+			}
+		}
+
+		// Persist updated fingerprints to the archive
+		this.archive = { ...this.archive, fileHashes: latestFingerprints };
+		return staleFiles;
 	}
 
 	/**

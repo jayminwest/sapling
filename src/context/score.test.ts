@@ -96,6 +96,20 @@ describe("scoreMessage", () => {
 		const scored = scoreMessage(msg, 0, [], false, "history");
 		expect(scored.metadata.hasUnresolvedQuestion).toBe(true);
 	});
+
+	it("boosts score for assistant messages with unresolved questions", () => {
+		const questionMsg: Message = {
+			role: "assistant",
+			content: [{ type: "text", text: "Should we use bcrypt?" }],
+		};
+		const statementMsg: Message = {
+			role: "assistant",
+			content: [{ type: "text", text: "I will use bcrypt" }],
+		};
+		const questionScore = scoreMessage(questionMsg, 5, [], false, "history");
+		const statementScore = scoreMessage(statementMsg, 5, [], false, "history");
+		expect(questionScore.score).toBeGreaterThan(statementScore.score);
+	});
 });
 
 describe("categorizeMessage", () => {

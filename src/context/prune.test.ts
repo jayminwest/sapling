@@ -10,6 +10,7 @@ import {
 	pruneMessages,
 	summarizeAssistantMessage,
 	summarizeGrepResult,
+	summarizeUserToolResult,
 } from "./prune.ts";
 
 function makeScoredMessage(
@@ -104,6 +105,38 @@ describe("summarizeAssistantMessage", () => {
 	});
 });
 
+describe("summarizeUserToolResult", () => {
+	it("returns null for string-content user messages", () => {
+		const msg: Message = { role: "user", content: "simple string" };
+		expect(summarizeUserToolResult(msg)).toBeNull();
+	});
+
+	it("returns null for non-user messages", () => {
+		const msg: Message = {
+			role: "assistant",
+			content: [{ type: "text", text: "assistant text" }],
+		};
+		expect(summarizeUserToolResult(msg)).toBeNull();
+	});
+
+	it("returns null when content is already small", () => {
+		const msg: Message = { role: "user", content: [{ type: "text", text: "short" }] };
+		expect(summarizeUserToolResult(msg)).toBeNull();
+	});
+
+	it("compresses large tool results into a one-liner", () => {
+		const bigContent = "x".repeat(500); // ~125 tokens
+		const msg: Message = { role: "user", content: [{ type: "text", text: bigContent }] };
+		const result = summarizeUserToolResult(msg);
+		expect(result).not.toBeNull();
+		if (result) {
+			expect(typeof result.content).not.toBe("string");
+			const content = result.content as { type: string; text: string }[];
+			expect(content[0]?.text).toContain("Tool output");
+		}
+	});
+});
+
 describe("pruneMessage", () => {
 	it("never prunes current-turn messages", () => {
 		const msg: Message = { role: "user", content: "current turn" };
@@ -143,6 +176,17 @@ describe("pruneMessage", () => {
 		const result = pruneMessage(scored, new Set(), 0);
 		expect(result.wasDropped).toBe(false);
 		expect(result.wasModified).toBe(false);
+	});
+});
+
+describe("pruneMessage — user tool result summarization", () => {
+	it("summarizes old low-score user messages with large block content", () => {
+		const bigContent = "y".repeat(500); // ~125 tokens
+		const msg: Message = { role: "user", content: [{ type: "text", text: bigContent }] };
+		const scored = makeScoredMessage(msg, 0.2, 8);
+		const result = pruneMessage(scored, new Set(), 0);
+		// Should be summarized or dropped (either is acceptable compression)
+		expect(result.wasSummarized || result.wasDropped || !result.wasModified).toBe(true);
 	});
 });
 

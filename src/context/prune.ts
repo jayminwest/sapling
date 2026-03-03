@@ -70,6 +70,20 @@ export function summarizeGrepResult(content: string): string {
 }
 
 /**
+ * Heuristic: does this text look like ripgrep output (file:line: content lines)?
+ */
+function looksLikeGrepOutput(text: string): boolean {
+	const lines = text.split("\n").filter((l) => l.trim());
+	if (lines.length < 5) return false;
+	let grepLines = 0;
+	const sample = lines.slice(0, 20);
+	for (const line of sample) {
+		if (/^[^:]+\.[a-zA-Z]+:\d+:/.test(line)) grepLines++;
+	}
+	return grepLines / sample.length > 0.5;
+}
+
+/**
  * Determine whether a ContentBlock is a file read that has since been modified.
  * Used to replace read content with a compact summary.
  */
@@ -117,6 +131,39 @@ export function summarizeAssistantMessage(message: Message): string {
 
 function shortArg(s: string): string {
 	return `${s.slice(0, 30)}${s.length > 30 ? "…" : ""}`;
+}
+
+/**
+ * Produce a compact summary of a user message (tool results) for pruned history.
+ * Returns null if the content is already small enough to keep as-is.
+ */
+export function summarizeUserToolResult(message: Message): Message | null {
+	if (message.role !== "user") return null;
+	if (typeof message.content === "string") return null;
+
+	const blocks = message.content;
+	const totalTokens = blocks.reduce((sum, block) => {
+		if (block.type === "text") return sum + estimateTokens(block.text);
+		return sum;
+	}, 0);
+
+	// Only summarize if there's substantial content to compress
+	if (totalTokens < 100) return null;
+
+	const summaryParts: string[] = [];
+	for (const block of blocks) {
+		if (block.type === "text") {
+			const lines = block.text.split("\n").length;
+			summaryParts.push(`${lines} line${lines !== 1 ? "s" : ""}`);
+		}
+	}
+
+	if (summaryParts.length === 0) return null;
+
+	return {
+		role: "user",
+		content: [{ type: "text", text: `[Tool output: ${summaryParts.join(", ")}]` }],
+	};
 }
 
 /**
@@ -168,6 +215,12 @@ export function pruneMessage(
 			};
 			return { message: summarized, wasModified: true, wasSummarized: true, wasDropped: false };
 		}
+		if (msg.role === "user") {
+			const summarized = summarizeUserToolResult(msg);
+			if (summarized) {
+				return { message: summarized, wasModified: true, wasSummarized: true, wasDropped: false };
+			}
+		}
 	}
 
 	return { message: scored.message, wasModified: false, wasSummarized: false, wasDropped: false };
@@ -185,7 +238,16 @@ function pruneUserMessageContent(
 
 	for (const block of blocks) {
 		if (block.type === "text") {
-			// Check if this looks like a large bash output
+			// Try grep result summarization first (compact and structure-preserving)
+			if (looksLikeGrepOutput(block.text)) {
+				const summarized = summarizeGrepResult(block.text);
+				if (summarized !== block.text) {
+					result.push({ type: "text", text: summarized });
+					modified = true;
+					continue;
+				}
+			}
+			// Fall back to bash output truncation for large outputs
 			const pruned = pruneBashOutput(block.text);
 			if (pruned !== block.text) {
 				result.push({ type: "text", text: pruned });
