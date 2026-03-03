@@ -44,85 +44,101 @@ program
 	});
 
 program
-	.command("run <prompt>")
+	.command("run [prompt]")
 	.description("Execute a task")
-	.option("--model <name>", "Model to use", "claude-sonnet-4-6")
+	.option("--model <name>", "Model to use (default: claude-sonnet-4-6)")
 	.option("--cwd <path>", "Working directory", ".")
-	.option("--backend <cc|sdk>", "LLM backend (auto-detects sdk inside CC sessions)", "cc")
+	.option("--backend <cc|sdk>", "LLM backend (auto-detects sdk inside CC sessions) (default: cc)")
 	.option("--system-prompt-file <path>", "Custom system prompt file")
-	.option("--max-turns <n>", "Max turns", "200")
+	.option("--max-turns <n>", "Max turns (default: 200)")
 	.option("--verbose", "Log context manager decisions")
 	.option("--json", "NDJSON event output on stdout")
 	.option("--timing", "Output elapsed execution time to stderr") // sapling-bcb3
 	.option("-q, --quiet", "Suppress non-essential output")
-	.action(async (prompt: string, options: Record<string, string | boolean | undefined>) => {
-		try {
-			const opts: RunOptions = {
-				systemPromptFile: options.systemPromptFile as string | undefined,
-				model: options.model as string | undefined,
-				backend: options.backend as LlmBackend | undefined,
-				maxTurns: options.maxTurns ? parseInt(options.maxTurns as string, 10) : undefined,
-				verbose: options.verbose as boolean | undefined,
-				quiet: options.quiet as boolean | undefined,
-				json: options.json as boolean | undefined,
-			};
-
-			const config = loadConfig({
-				...(opts.model ? { model: opts.model } : {}),
-				...(opts.backend ? { backend: opts.backend } : {}),
-				...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),
-				...(opts.verbose !== undefined ? { verbose: opts.verbose } : {}),
-				...(opts.quiet !== undefined ? { quiet: opts.quiet } : {}),
-				...(opts.json !== undefined ? { json: opts.json } : {}),
-				cwd: (options.cwd as string | undefined) ?? process.cwd(),
-			});
-
-			configure({ verbose: config.verbose, quiet: config.quiet, json: config.json });
-			setColorEnabled(!config.quiet && !config.json);
-
-			const result = await runCommand(prompt, opts, config);
-
-			if (config.json) {
-				if (result.exitReason === "error") {
-					printJsonError("run", result.error ?? "Task failed", {
-						exitReason: result.exitReason,
-						totalTurns: result.totalTurns,
-						totalInputTokens: result.totalInputTokens,
-						totalOutputTokens: result.totalOutputTokens,
-					});
-				} else {
-					printJson("run", {
-						exitReason: result.exitReason,
-						totalTurns: result.totalTurns,
-						totalInputTokens: result.totalInputTokens,
-						totalOutputTokens: result.totalOutputTokens,
-					});
+	.action(
+		async (prompt: string | undefined, options: Record<string, string | boolean | undefined>) => {
+			try {
+				// Read from stdin if no prompt and input is piped (sapling-fe2c)
+				if (!prompt && !process.stdin.isTTY) {
+					prompt = (await Bun.stdin.text()).trim();
 				}
-			} else {
-				logger.info(
-					`Done: ${result.exitReason} after ${result.totalTurns} turn(s) ` +
-						`(${result.totalInputTokens} in / ${result.totalOutputTokens} out tokens)`,
-				);
-			}
 
-			// --timing: print elapsed time to stderr in muted text (sapling-bcb3)
-			if (options.timing) {
-				process.stderr.write(colors.dim(`Done in ${Date.now() - startTime}ms\n`));
-			}
+				// Validate prompt is non-empty (sapling-5ad6)
+				if (!prompt || !prompt.trim()) {
+					process.stderr.write(
+						"Error: prompt must not be empty. Provide as argument or pipe via stdin.\n",
+					);
+					process.exitCode = 1;
+					return;
+				}
 
-			// Use process.exitCode instead of process.exit(1) to allow cleanup/finally (sapling-43da)
-			if (result.exitReason === "error") {
-				process.exitCode = 1;
+				const opts: RunOptions = {
+					systemPromptFile: options.systemPromptFile as string | undefined,
+					model: options.model as string | undefined,
+					backend: options.backend as LlmBackend | undefined,
+					maxTurns: options.maxTurns ? parseInt(options.maxTurns as string, 10) : undefined,
+					verbose: options.verbose as boolean | undefined,
+					quiet: options.quiet as boolean | undefined,
+					json: options.json as boolean | undefined,
+				};
+
+				const config = loadConfig({
+					...(opts.model ? { model: opts.model } : {}),
+					...(opts.backend ? { backend: opts.backend } : {}),
+					...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),
+					...(opts.verbose !== undefined ? { verbose: opts.verbose } : {}),
+					...(opts.quiet !== undefined ? { quiet: opts.quiet } : {}),
+					...(opts.json !== undefined ? { json: opts.json } : {}),
+					cwd: (options.cwd as string | undefined) ?? process.cwd(),
+				});
+
+				configure({ verbose: config.verbose, quiet: config.quiet, json: config.json });
+				setColorEnabled(!config.quiet && !config.json);
+
+				const result = await runCommand(prompt, opts, config);
+
+				if (config.json) {
+					if (result.exitReason === "error") {
+						printJsonError("run", result.error ?? "Task failed", {
+							exitReason: result.exitReason,
+							totalTurns: result.totalTurns,
+							totalInputTokens: result.totalInputTokens,
+							totalOutputTokens: result.totalOutputTokens,
+						});
+					} else {
+						printJson("run", {
+							exitReason: result.exitReason,
+							totalTurns: result.totalTurns,
+							totalInputTokens: result.totalInputTokens,
+							totalOutputTokens: result.totalOutputTokens,
+						});
+					}
+				} else {
+					logger.info(
+						`Done: ${result.exitReason} after ${result.totalTurns} turn(s) ` +
+							`(${result.totalInputTokens} in / ${result.totalOutputTokens} out tokens)`,
+					);
+				}
+
+				// --timing: print elapsed time to stderr in muted text (sapling-bcb3)
+				if (options.timing) {
+					process.stderr.write(colors.dim(`Done in ${Date.now() - startTime}ms\n`));
+				}
+
+				// Use process.exitCode instead of process.exit(1) to allow cleanup/finally (sapling-43da)
+				if (result.exitReason === "error") {
+					process.exitCode = 1;
+				}
+			} catch (err) {
+				if (err instanceof SaplingError) {
+					process.stderr.write(`Error: ${err.message}\n`);
+					process.exitCode = 1;
+					return;
+				}
+				throw err;
 			}
-		} catch (err) {
-			if (err instanceof SaplingError) {
-				process.stderr.write(`Error: ${err.message}\n`);
-				process.exitCode = 1;
-				return;
-			}
-			throw err;
-		}
-	});
+		},
+	);
 
 program
 	.command("version")

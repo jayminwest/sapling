@@ -5,6 +5,7 @@
  * and context manager, then calls runLoop().
  */
 
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { AnthropicClient, CcClient } from "./client/index.ts";
@@ -50,6 +51,11 @@ export async function runCommand(
 	opts: RunOptions,
 	config: SaplingConfig,
 ): Promise<ReturnType<typeof runLoop>> {
+	// Validate cwd exists (sapling-3810)
+	if (!existsSync(config.cwd)) {
+		throw new ConfigError(`Working directory not found: ${config.cwd}`, "CONFIG_INVALID_CWD");
+	}
+
 	// Load custom system prompt if provided
 	let systemPrompt = DEFAULT_SYSTEM_PROMPT;
 	if (opts.systemPromptFile) {
