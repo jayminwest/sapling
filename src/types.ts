@@ -66,14 +66,22 @@ export interface JsonSchemaProperty {
 	items?: JsonSchemaProperty;
 }
 
+/** Minimal interface for hook manager — avoids circular import with hooks/manager.ts. */
+export interface IHookManager {
+	/** Return false to block the tool call; true to allow it. */
+	preToolCall(toolName: string, input: Record<string, unknown>): boolean;
+	/** Called after a tool call completes (result is final content string). */
+	postToolCall(toolName: string, result: string): void;
+}
+
 export interface LoopOptions {
 	task: string;
 	systemPrompt: string;
 	model: string;
 	maxTurns?: number;
 	cwd: string;
-	/** Optional hook manager for pre/post tool call guards. Wired in sapling-8350. */
-	hookManager?: unknown;
+	/** Optional hook manager for pre/post tool call guards. */
+	hookManager?: IHookManager;
 }
 
 export interface LoopResult {

@@ -243,8 +243,22 @@ export async function runLoop(
 					};
 				}
 
+				// Pre-tool-call hook — block if guard returns false
+				if (options.hookManager && !options.hookManager.preToolCall(call.name, call.input)) {
+					return {
+						type: "tool_result",
+						tool_use_id: call.id,
+						content: `Tool call blocked by guard: "${call.name}"`,
+						is_error: true,
+					};
+				}
+
 				try {
 					const result = await tool.execute(call.input, options.cwd);
+
+					// Post-tool-call hook
+					options.hookManager?.postToolCall(call.name, result.content);
+
 					logger.debug(`Tool ${call.name} completed`, {
 						isError: result.isError,
 						tokens: result.metadata?.tokensEstimate,

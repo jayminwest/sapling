@@ -483,6 +483,95 @@ describe("runLoop", () => {
 		expect(processCallCount).toBe(2);
 	});
 
+	// ── Hook manager ─────────────────────────────────────────────────────────
+
+	it("blocks tool call when hookManager.preToolCall returns false", async () => {
+		const blocked: string[] = [];
+		const hookManager = {
+			preToolCall(toolName: string, _input: Record<string, unknown>): boolean {
+				blocked.push(toolName);
+				return false; // always block
+			},
+			postToolCall(_toolName: string, _result: string): void {},
+		};
+
+		const responses: LlmResponse[] = [
+			mockToolUseResponse("echo", { message: "hi" }, "tc1"),
+			mockTextResponse("done after block"),
+		];
+		const client = createMockClient(responses);
+		const registry = createRegistry([createEchoTool()]);
+
+		const result = await runLoop(client, registry, ctx, defaultOptions(testDir, { hookManager }));
+
+		expect(result.exitReason).toBe("task_complete");
+		// The hook was called for "echo"
+		expect(blocked).toContain("echo");
+		// Loop completed with 2 turns (tool call was blocked, LLM got error result and responded)
+		expect(result.totalTurns).toBe(2);
+	});
+
+	it("allows tool call when hookManager.preToolCall returns true", async () => {
+		const allowed: string[] = [];
+		const hookManager = {
+			preToolCall(toolName: string, _input: Record<string, unknown>): boolean {
+				allowed.push(toolName);
+				return true;
+			},
+			postToolCall(_toolName: string, _result: string): void {},
+		};
+
+		const responses: LlmResponse[] = [
+			mockToolUseResponse("echo", { message: "hello" }, "tc1"),
+			mockTextResponse("done"),
+		];
+		const client = createMockClient(responses);
+		const registry = createRegistry([createEchoTool()]);
+
+		const result = await runLoop(client, registry, ctx, defaultOptions(testDir, { hookManager }));
+
+		expect(result.exitReason).toBe("task_complete");
+		expect(allowed).toContain("echo");
+	});
+
+	it("calls hookManager.postToolCall after successful tool execution", async () => {
+		const postCalls: { toolName: string; result: string }[] = [];
+		const hookManager = {
+			preToolCall(_toolName: string, _input: Record<string, unknown>): boolean {
+				return true;
+			},
+			postToolCall(toolName: string, result: string): void {
+				postCalls.push({ toolName, result });
+			},
+		};
+
+		const responses: LlmResponse[] = [
+			mockToolUseResponse("echo", { message: "world" }, "tc1"),
+			mockTextResponse("done"),
+		];
+		const client = createMockClient(responses);
+		const registry = createRegistry([createEchoTool()]);
+
+		await runLoop(client, registry, ctx, defaultOptions(testDir, { hookManager }));
+
+		expect(postCalls).toHaveLength(1);
+		expect(postCalls[0]?.toolName).toBe("echo");
+		expect(postCalls[0]?.result).toBe("world");
+	});
+
+	it("does not call hookManager when no hookManager is provided", async () => {
+		// No hookManager — loop should work normally
+		const responses: LlmResponse[] = [
+			mockToolUseResponse("echo", { message: "ok" }, "tc1"),
+			mockTextResponse("done"),
+		];
+		const client = createMockClient(responses);
+		const registry = createRegistry([createEchoTool()]);
+
+		const result = await runLoop(client, registry, ctx, defaultOptions(testDir));
+		expect(result.exitReason).toBe("task_complete");
+	});
+
 	// ── Options ───────────────────────────────────────────────────────────────
 
 	it("passes model and system prompt to LLM request", async () => {
