@@ -100,11 +100,6 @@ program
 
 				const result = await runCommand(prompt, opts, config);
 
-				// Print the agent final text response to stdout (sapling-c8bb)
-				if (result.responseText) {
-					process.stdout.write(`${result.responseText}\n`);
-				}
-
 				if (config.json) {
 					if (result.responseText) {
 						printJson("response", { response: result.responseText });
