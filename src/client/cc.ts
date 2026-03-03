@@ -226,7 +226,7 @@ export class CcClient implements LlmClient {
 		const content: ContentBlock[] = [];
 
 		if (structured.thinking) {
-			content.push({ type: "text", text: structured.thinking });
+			logger.debug("CC thinking", { thinking: structured.thinking });
 		}
 
 		let stopReason: "end_turn" | "tool_use" | "max_tokens" = "end_turn";

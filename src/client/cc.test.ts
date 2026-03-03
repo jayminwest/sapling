@@ -129,8 +129,9 @@ describe("CcClient", () => {
 				expect(toolBlock.input).toEqual({ command: "ls" });
 				expect(typeof toolBlock.id).toBe("string");
 			}
+			// thinking must NOT appear as a text block in the response content
 			const textBlock = result.content.find((b) => b.type === "text");
-			expect(textBlock).toBeDefined();
+			expect(textBlock).toBeUndefined();
 		});
 
 		it("parses valid CC response with text_response only", async () => {
@@ -145,10 +146,32 @@ describe("CcClient", () => {
 
 			expect(result.stopReason).toBe("end_turn");
 			const textBlocks = result.content.filter((b) => b.type === "text");
-			expect(textBlocks.length).toBe(2);
+			// Only the text_response block — thinking must NOT appear in content
+			expect(textBlocks.length).toBe(1);
 			const texts = textBlocks.map((b) => (b.type === "text" ? b.text : ""));
 			expect(texts).toContain("All done!");
-			expect(texts).toContain("Task is done.");
+			expect(texts).not.toContain("Task is done.");
+		});
+
+		it("suppresses thinking from content so it never reaches user output", async () => {
+			const structured = {
+				thinking: "Internal reasoning the user must never see.",
+				text_response: "Hello! I'm Sapling.",
+			};
+			spawnSpy.mockReturnValue(makeFakeProcess({ exitCode: 0, stdout: makeCcOutput(structured) }));
+
+			const client = new CcClient();
+			const result = await client.call(baseRequest);
+
+			const allText = result.content
+				.filter(
+					(b): b is Extract<(typeof result.content)[number], { type: "text" }> => b.type === "text",
+				)
+				.map((b) => b.text)
+				.join("\n");
+
+			expect(allText).not.toContain("Internal reasoning");
+			expect(allText).toContain("Hello! I'm Sapling.");
 		});
 
 		it("throws ClientError with CC_FAILED on non-zero exit code", async () => {
