@@ -1,6 +1,6 @@
 {
 	"name": "@os-eco/sapling-cli",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"description": "Headless coding agent with proactive context management",
 	"author": "Jaymin West",
 	"license": "MIT",

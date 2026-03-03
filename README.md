@@ -41,14 +41,21 @@ sp run "Add error handling" --json
 sapling run <prompt>            Execute a task
   --model <name>                  Model to use (default: claude-sonnet-4-6)
   --cwd <path>                    Working directory (default: .)
-  --backend <cc|sdk>              LLM backend (default: cc)
+  --backend <cc|pi|sdk>           LLM backend (default: cc)
   --system-prompt-file <path>     Custom system prompt
   --max-turns <n>                 Max turns (default: 200)
   --verbose                       Log context manager decisions
   --json                          NDJSON event output on stdout
+  --timing                        Show elapsed time on stderr
   --quiet, -q                     Suppress non-essential output
 
 sapling version                 Print version
+  --json                          Output as JSON envelope
+
+sapling completions <shell>     Generate shell completions (bash, zsh, fish)
+sapling upgrade                 Upgrade to the latest version
+  --check                         Check for updates without installing
+sapling doctor                  Run environment health checks
 ```
 
 ## How It Works
@@ -82,8 +89,15 @@ sapling/
     config.ts             Config loader + env var support + validation
     json.ts               JSON parsing utilities
     test-helpers.ts       Shared test utilities (temp dirs, mock factories)
+    commands/
+      completions.ts      Shell completion script generator (bash, zsh, fish)
+      upgrade.ts          Self-upgrade from npm
+      doctor.ts           Environment health checks
+      typo.ts             Levenshtein-based command suggestions
+      version.ts          Shared version utilities
     client/
       cc.ts               Claude Code subprocess backend
+      pi.ts               Pi multi-provider subprocess backend
       anthropic.ts        Anthropic SDK backend (optional dep, dynamic import)
       index.ts            Client factory
     tools/
@@ -116,9 +130,10 @@ sapling/
 | Backend | Billing | Method |
 |---------|---------|--------|
 | `cc` (default) | Claude Code subscription | `claude -p` subprocess |
+| `pi` | Provider-dependent | `pi` subprocess (JSONL events) |
 | `sdk` | Anthropic API per-token | `@anthropic-ai/sdk` direct calls |
 
-The SDK backend auto-detects when running inside a Claude Code session. The CC subprocess backend uses Claude Code as a structured-output endpoint — Sapling owns the agent loop, tools, and context management. CC just handles auth and billing.
+The SDK backend auto-detects when running inside a Claude Code session. The CC subprocess backend uses Claude Code as a structured-output endpoint — Sapling owns the agent loop, tools, and context management. CC just handles auth and billing. The Pi backend communicates via JSONL events with a `pi` subprocess, enabling multi-provider model access.
 
 ## Part of os-eco
 
@@ -137,7 +152,7 @@ Sapling is part of the [os-eco](https://github.com/jayminwest/os-eco) AI agent t
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SAPLING_MODEL` | `claude-sonnet-4-6` | Model to use |
-| `SAPLING_BACKEND` | `cc` | LLM backend (`cc` or `sdk`) |
+| `SAPLING_BACKEND` | `cc` | LLM backend (`cc`, `pi`, or `sdk`) |
 | `SAPLING_MAX_TURNS` | `200` | Maximum agent turns |
 | `SAPLING_CONTEXT_WINDOW` | `200000` | Context window size in tokens |
 
@@ -147,7 +162,7 @@ Sapling is part of the [os-eco](https://github.com/jayminwest/os-eco) AI agent t
 git clone https://github.com/jayminwest/sapling.git
 cd sapling
 bun install
-bun test                  # 298 tests across 24 files (959 expect() calls)
+bun test                  # 354 tests across 26 files (1076 expect() calls)
 bun run lint              # Biome linting
 bun run typecheck         # TypeScript strict check
 ```

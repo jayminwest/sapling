@@ -11,7 +11,7 @@ Sapling (`@os-eco/sapling-cli`, CLI: `sp` / `sapling`) is a headless coding agen
 All commands use **Bun** as the runtime. There is no build/compile step — TypeScript runs directly.
 
 ```bash
-bun test                  # Run all 298 tests (24 files, 959 expect() calls)
+bun test                  # Run all 354 tests (26 files, 1076 expect() calls)
 bun test src/loop.test.ts # Run a single test file
 bun run lint              # Lint (Biome)
 bun run lint:fix          # Lint + auto-fix
@@ -34,8 +34,9 @@ Each turn: call LLM → if no tool calls, stop → execute all tool calls in par
 
 ### LLM clients (`src/client/`)
 
-Two backends implementing `LlmClient` from `src/types.ts`:
+Three backends implementing `LlmClient` from `src/types.ts`:
 - **CcClient** (`cc.ts`, default) — spawns `claude` subprocess with `--output-format json` and `--json-schema`, parses structured JSON response
+- **PiClient** (`pi.ts`) — spawns `pi` subprocess, communicates via JSONL events; supports multi-provider models
 - **AnthropicClient** (`anthropic.ts`) — calls Anthropic SDK directly; `@anthropic-ai/sdk` is an optional dep, dynamically imported
 
 ### Context pipeline (`src/context/`)
@@ -49,15 +50,19 @@ Runs every turn via `SaplingContextManager.process()`:
 
 ### Benchmarking (`src/bench/`)
 
-Deterministic context pipeline benchmarking: `harness.ts` runs scenarios through the pipeline, `scenarios.ts` defines 3 predefined message sequences covering common agent workloads (SHORT/10 turns, MEDIUM/30 turns, LONG/100 turns).
+Deterministic context pipeline benchmarking: `harness.ts` runs scenarios through the pipeline, `scenarios.ts` defines 14 predefined message sequences covering common agent workloads (SHORT/10 turns, MEDIUM/30 turns, LONG/100 turns).
 
 ### Logging (`src/logging/`)
 
 Structured logger (`logger.ts`) with JSON output support and color control (`color.ts`). All console output routed through the logger for `--json`/`--quiet` mode compatibility.
 
+### CLI commands (`src/commands/`)
+
+Subcommands registered from `src/index.ts`: `completions` (shell completion scripts for bash/zsh/fish), `upgrade` (check/install latest version), `doctor` (health checks), `version` (shared version utilities). `typo.ts` provides Levenshtein-based command suggestions for unknown commands.
+
 ### Other source files
 
-- `src/json.ts` — JSON parsing utilities
+- `src/json.ts` — JSON envelope utilities (`{ success, command, ...data }` format)
 - `src/test-helpers.ts` — Shared test helpers (temp dirs, mock client/tool factories)
 
 ### Tools (`src/tools/`)

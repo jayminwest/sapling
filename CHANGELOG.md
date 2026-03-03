@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-03-03
+
+### Added
+
+#### Pi Backend
+- New `PiClient` (`src/client/pi.ts`) — multi-provider LLM backend that communicates via JSONL events with a `pi` subprocess
+- `--backend pi` flag and `SAPLING_BACKEND=pi` env var support
+- Full test coverage for PiClient (`src/client/pi.test.ts`)
+
+#### New CLI Commands
+- `sapling completions <bash|zsh|fish>` — generate shell completion scripts
+- `sapling upgrade` — check for and install the latest version from npm (`--check` for dry run)
+- `sapling doctor` — run health checks on the Sapling setup and environment
+- Typo suggestions for unknown commands using Levenshtein distance
+
+#### Branding & Color
+- Brand color palette (forest green / amber / muted stone) in `src/logging/color.ts`
+- Status icons (ecosystem Set D) and message helpers (`printSuccess`, `printError`, `printWarning`)
+- Branded CLI help header with tool name and version
+
+#### Output Improvements
+- `--timing` flag on `run` command to display elapsed execution time on stderr
+- `responseText` field added to `LoopResult` — final LLM text is now returned from the loop
+- Final response text printed via stdout instead of logger, so `--quiet` doesn't suppress it
+- JSON envelope redesigned: `{ success, command, ...data }` format replaces previous `{ name, version }` format
+
+### Fixed
+
+#### Tool Path Resolution
+- `WriteTool`, `ReadTool`, and `EditTool` now resolve relative `file_path` against `cwd` instead of requiring absolute paths
+
+#### Subprocess Reliability
+- `BashTool` drains stdout/stderr concurrently with `proc.exited` to prevent pipe deadlocks
+- `GrepTool` drains stdout/stderr concurrently to prevent pipe deadlocks
+- `CcClient` subprocess timeout (120s default) prevents indefinite hangs on invalid model or stalled network
+
+#### CC Backend
+- Thinking text from CC backend suppressed from user-visible output (logged at debug level instead)
+- `tool_result` blocks handled correctly in CC backend serializer
+- `tool_result` blocks handled correctly in `estimateBlockTokens`
+
+#### Config & Validation
+- `NaN` and `Infinity` rejected for `maxTurns` and `contextWindow` in config validation
+- Empty prompt, missing cwd, and missing system-prompt-file produce clean `SaplingError` messages instead of uncaught exceptions
+- Env var overrides for config flags fixed
+
+#### SDK Backend
+- Client-side auth errors (missing API key) correctly classified as `SDK_AUTH_FAILED`
+
+#### Other
+- `version` command supports `--json` flag with standard JSON envelope
+- `--version --json` flag combination handled before Commander parsing
+- Fish completions fixed to use single `__fish_seen_subcommand_from` call
+
+### Changed
+- Test suite grown from 298 tests / 24 files / 959 expects to 354 tests / 26 files / 1076 expects
+- `LlmBackend` type extended from `"cc" | "sdk"` to `"cc" | "pi" | "sdk"`
+- JSON output envelope format changed from `{ name, version, ...data }` to `{ success, command, ...data }`
+- Biome schema version updated for 2.4.5 compatibility
+
 ## [0.1.1] - 2026-03-02
 
 ### Added
@@ -102,6 +162,7 @@ Initial release of Sapling — a headless coding agent with proactive context ma
 - Real temp directory helpers (`src/test-helpers.ts`)
 - Full coverage of: agent loop, context pipeline (all 5 stages), both LLM clients, all 6 tools, config validation, error hierarchy
 
-[Unreleased]: https://github.com/jayminwest/sapling/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/jayminwest/sapling/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/jayminwest/sapling/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/jayminwest/sapling/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jayminwest/sapling/releases/tag/v0.1.0

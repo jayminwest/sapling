@@ -12,7 +12,7 @@ import { colors, setColorEnabled } from "./logging/color.ts";
 import { configure, logger } from "./logging/logger.ts";
 import type { LlmBackend, RunOptions } from "./types.ts";
 
-export const VERSION = "0.1.1";
+export const VERSION = "0.1.2";
 
 const startTime = Date.now();
 
