@@ -12,9 +12,10 @@
  * failures, responseText bugs, and stdout output issues.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import { runCommand } from "./cli.ts";
+import { CcClient } from "./client/cc.ts";
 import { validateConfig } from "./config.ts";
 import { cleanupTempDir, createTempDir } from "./test-helpers.ts";
 import type { RunOptions, SaplingConfig } from "./types.ts";
@@ -135,5 +136,160 @@ describe.skipIf(SKIP)("integration tests (SDK backend, real API)", () => {
 		expect(exitCode).toBe(0);
 		// The agent final response should appear in stdout
 		expect(stdout).toContain("UNIQUE_MARKER_XYZ123");
+	}, 60_000);
+});
+
+// ─── CC backend smoke tests ───────────────────────────────────────────────────
+//
+// These tests expose the cc-plain-text-fallback bug: when the CC subprocess is
+// called with --tools "" and --json-schema, the claude CLI ignores the schema
+// and returns plain text instead of structured tool_calls. This means the CC
+// backend is completely non-functional for tool-using tasks.
+//
+// WHY GATED: Requires a working `claude` CLI installation.
+// Set SAPLING_INTEGRATION_TESTS=1 to run.
+
+describe.skipIf(SKIP)("CC backend smoke tests (real claude subprocess)", () => {
+	let testDir: string;
+	let claudeAvailable = false;
+
+	beforeAll(async () => {
+		// Check if claude CLI is installed and responsive
+		try {
+			const proc = Bun.spawn(["claude", "--version"], {
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			const code = await proc.exited;
+			claudeAvailable = code === 0;
+		} catch {
+			claudeAvailable = false;
+		}
+	});
+
+	beforeEach(async () => {
+		testDir = await createTempDir();
+	});
+
+	afterEach(async () => {
+		await cleanupTempDir(testDir);
+	});
+
+	function makeCcConfig(cwd: string): SaplingConfig {
+		return validateConfig({
+			backend: "cc",
+			model: "claude-haiku-4-5-20251001",
+			maxTurns: 3,
+			cwd,
+			quiet: true,
+		});
+	}
+
+	// -- Smoke Test 1: CC subprocess returns valid JSON for text prompt --
+	// Verifies the CC subprocess can be invoked and returns parseable JSON.
+	// No tools — this exercises the basic CC pipeline without --json-schema.
+
+	it("CC subprocess returns structured JSON for text-only prompt", async () => {
+		if (!claudeAvailable) {
+			console.log("[SKIP] claude CLI not available, skipping CC smoke test");
+			return;
+		}
+
+		const client = new CcClient({ model: "claude-haiku-4-5-20251001", timeoutMs: 30_000 });
+		const result = await client.call({
+			systemPrompt: "You are a concise assistant.",
+			messages: [{ role: "user", content: "Reply with exactly: PONG" }],
+			tools: [],
+		});
+
+		expect(result.stopReason).toBe("end_turn");
+		expect(result.content.length).toBeGreaterThan(0);
+		const text = result.content
+			.filter(
+				(b): b is Extract<(typeof result.content)[number], { type: "text" }> => b.type === "text",
+			)
+			.map((b) => b.text)
+			.join("");
+		expect(text.toUpperCase()).toContain("PONG");
+	}, 30_000);
+
+	// -- Smoke Test 2: CC subprocess with --json-schema documents tool_calls behavior --
+	// This test exposes whether the CC backend actually returns tool_calls when requested.
+	// Known issue: cc-plain-text-fallback — when --tools "" is combined with --json-schema,
+	// the claude CLI may ignore the schema and return plain text (stopReason: "end_turn").
+	// The test asserts stopReason IS "tool_use" — EXPECTED TO FAIL until the CC backend is fixed.
+
+	it("CC subprocess with --json-schema returns tool_calls (validates tool dispatch)", async () => {
+		if (!claudeAvailable) {
+			console.log("[SKIP] claude CLI not available, skipping CC smoke test");
+			return;
+		}
+
+		const client = new CcClient({ model: "claude-haiku-4-5-20251001", timeoutMs: 30_000 });
+		const result = await client.call({
+			systemPrompt:
+				"You are a tool-using assistant. ALWAYS use tools when requested — never respond with text alone.",
+			messages: [
+				{
+					role: "user",
+					content: "Use the bash tool with command: echo SMOKE_MARKER_456",
+				},
+			],
+			tools: [
+				{
+					name: "bash",
+					description: "Run a bash command and return its output",
+					input_schema: {
+						type: "object",
+						properties: { command: { type: "string" } },
+						required: ["command"],
+					},
+				},
+			],
+		});
+
+		// DIAGNOSTIC: log what the CC subprocess actually returned so failures are clear
+		const toolBlocks = result.content.filter((b) => b.type === "tool_use");
+		const textBlocks = result.content.filter((b) => b.type === "text");
+		console.log(
+			`[CC smoke] stopReason=${result.stopReason} tool_blocks=${toolBlocks.length} text_blocks=${textBlocks.length}`,
+		);
+
+		// This assertion documents the required behavior: CC backend MUST return tool_use.
+		// If it fails, the cc-plain-text-fallback bug is active and CC is non-functional.
+		expect(result.stopReason).toBe("tool_use");
+		expect(toolBlocks.length).toBeGreaterThan(0);
+		const toolBlock = toolBlocks[0];
+		if (toolBlock?.type === "tool_use") {
+			expect(toolBlock.name).toBe("bash");
+		}
+	}, 30_000);
+
+	// -- Smoke Test 3: Full sp run with CC backend dispatches tools end-to-end --
+	// Verifies that runCommand() with CC backend can actually read a file via tool dispatch.
+	// This catches the bug where the agent loop never calls tools because CC returns plain text.
+
+	it("sp run with CC backend dispatches read tool to access file contents", async () => {
+		if (!claudeAvailable) {
+			console.log("[SKIP] claude CLI not available, skipping CC smoke test");
+			return;
+		}
+
+		const filePath = join(testDir, "secret.txt");
+		await Bun.write(filePath, "CC_SECRET_TOKEN_789");
+
+		const config = makeCcConfig(testDir);
+		const opts: RunOptions = { backend: "cc", quiet: true };
+
+		const result = await runCommand(
+			`Read the file at ${filePath} and tell me the exact token value it contains.`,
+			opts,
+			config,
+		);
+
+		// If CC tool dispatch works, responseText must contain the token
+		expect(result.exitReason).toBe("task_complete");
+		expect(result.responseText).toBeDefined();
+		expect(result.responseText).toContain("CC_SECRET_TOKEN_789");
 	}, 60_000);
 });
