@@ -82,6 +82,8 @@ export interface LoopOptions {
 	cwd: string;
 	/** Optional hook manager for pre/post tool call guards. */
 	hookManager?: IHookManager;
+	/** Optional event emitter for NDJSON per-turn events (--json mode). */
+	eventEmitter?: { emit(event: Record<string, unknown>): void };
 }
 
 export interface LoopResult {

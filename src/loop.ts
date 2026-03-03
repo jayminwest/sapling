@@ -164,8 +164,16 @@ export async function runLoop(
 		tools: toolDefs.map((t) => t.name),
 	});
 
+	options.eventEmitter?.emit({
+		type: "started",
+		model: options.model,
+		maxTurns,
+		tools: toolDefs.map((t) => t.name),
+	});
+
 	while (totalTurns < maxTurns) {
 		totalTurns++;
+		options.eventEmitter?.emit({ type: "turn_start", turn: totalTurns });
 
 		// ── Step 1: Build LLM request ─────────────────────────────────────────
 		const request: LlmRequest = {
@@ -182,6 +190,13 @@ export async function runLoop(
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
 			logger.error(`Agent loop aborted: ${message}`);
+			options.eventEmitter?.emit({
+				type: "run_complete",
+				exitReason: "error",
+				totalTurns,
+				totalInputTokens,
+				totalOutputTokens,
+			});
 			return {
 				exitReason: "error",
 				totalTurns,
@@ -213,6 +228,22 @@ export async function runLoop(
 			});
 			// Let context manager finalize state
 			contextManager.process(messages as Message[], response.usage, []);
+			const util = contextManager.getUtilization();
+			const contextUtilization = util.total.budget > 0 ? util.total.used / util.total.budget : 0;
+			options.eventEmitter?.emit({
+				type: "turn_end",
+				turn: totalTurns,
+				inputTokens: totalInputTokens,
+				outputTokens: totalOutputTokens,
+				contextUtilization,
+			});
+			options.eventEmitter?.emit({
+				type: "run_complete",
+				exitReason: "task_complete",
+				totalTurns,
+				totalInputTokens,
+				totalOutputTokens,
+			});
 			return {
 				exitReason: "task_complete",
 				totalTurns,
@@ -229,10 +260,19 @@ export async function runLoop(
 		// ── Step 6: Execute tools in parallel ─────────────────────────────────
 		const toolResultBlocks: ToolResultBlock[] = await Promise.all(
 			toolCalls.map(async (call): Promise<ToolResultBlock> => {
+				// Emit tool_call event before dispatching
+				options.eventEmitter?.emit({
+					type: "tool_call",
+					turn: totalTurns,
+					toolName: call.name,
+					toolCallId: call.id,
+				});
+
+				let toolResult: ToolResultBlock;
 				const tool = tools.get(call.name);
 				if (!tool) {
 					logger.warn(`Unknown tool requested: ${call.name}`);
-					return {
+					toolResult = {
 						type: "tool_result",
 						tool_use_id: call.id,
 						content: `Tool not found: "${call.name}". Available tools: ${tools
@@ -241,44 +281,53 @@ export async function runLoop(
 							.join(", ")}`,
 						is_error: true,
 					};
-				}
-
-				// Pre-tool-call hook — block if guard returns false
-				if (options.hookManager && !options.hookManager.preToolCall(call.name, call.input)) {
-					return {
+				} else if (options.hookManager && !options.hookManager.preToolCall(call.name, call.input)) {
+					// Pre-tool-call hook — block if guard returns false
+					toolResult = {
 						type: "tool_result",
 						tool_use_id: call.id,
 						content: `Tool call blocked by guard: "${call.name}"`,
 						is_error: true,
 					};
+				} else {
+					try {
+						const result = await tool.execute(call.input, options.cwd);
+
+						// Post-tool-call hook
+						options.hookManager?.postToolCall(call.name, result.content);
+
+						logger.debug(`Tool ${call.name} completed`, {
+							isError: result.isError,
+							tokens: result.metadata?.tokensEstimate,
+						});
+						toolResult = {
+							type: "tool_result",
+							tool_use_id: call.id,
+							content: result.content,
+							...(result.isError ? { is_error: true } : {}),
+						};
+					} catch (err) {
+						const msg = err instanceof Error ? err.message : String(err);
+						logger.warn(`Tool ${call.name} threw: ${msg}`);
+						toolResult = {
+							type: "tool_result",
+							tool_use_id: call.id,
+							content: `Tool execution error: ${msg}`,
+							is_error: true,
+						};
+					}
 				}
 
-				try {
-					const result = await tool.execute(call.input, options.cwd);
+				// Emit tool_result event after completion
+				options.eventEmitter?.emit({
+					type: "tool_result",
+					turn: totalTurns,
+					toolName: call.name,
+					toolCallId: call.id,
+					isError: toolResult.is_error ?? false,
+				});
 
-					// Post-tool-call hook
-					options.hookManager?.postToolCall(call.name, result.content);
-
-					logger.debug(`Tool ${call.name} completed`, {
-						isError: result.isError,
-						tokens: result.metadata?.tokensEstimate,
-					});
-					return {
-						type: "tool_result",
-						tool_use_id: call.id,
-						content: result.content,
-						...(result.isError ? { is_error: true } : {}),
-					};
-				} catch (err) {
-					const msg = err instanceof Error ? err.message : String(err);
-					logger.warn(`Tool ${call.name} threw: ${msg}`);
-					return {
-						type: "tool_result",
-						tool_use_id: call.id,
-						content: `Tool execution error: ${msg}`,
-						is_error: true,
-					};
-				}
+				return toolResult;
 			}),
 		);
 
@@ -290,12 +339,30 @@ export async function runLoop(
 		const managed = contextManager.process(messages as Message[], response.usage, currentFiles);
 		// Replace the message array in-place with the managed version
 		messages.splice(0, messages.length, ...(managed as LoopMessage[]));
+
+		// Emit turn_end with cumulative token counts and context utilization ratio
+		const turnUtil = contextManager.getUtilization();
+		options.eventEmitter?.emit({
+			type: "turn_end",
+			turn: totalTurns,
+			inputTokens: totalInputTokens,
+			outputTokens: totalOutputTokens,
+			contextUtilization:
+				turnUtil.total.budget > 0 ? turnUtil.total.used / turnUtil.total.budget : 0,
+		});
 	}
 
 	// Max turns exhausted
 	logger.warn(`Agent loop stopped: max turns (${maxTurns}) reached`, {
 		inputTokens: totalInputTokens,
 		outputTokens: totalOutputTokens,
+	});
+	options.eventEmitter?.emit({
+		type: "run_complete",
+		exitReason: "max_turns",
+		totalTurns,
+		totalInputTokens,
+		totalOutputTokens,
 	});
 	return {
 		exitReason: "max_turns",

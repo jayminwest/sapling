@@ -12,6 +12,7 @@ import { AnthropicClient, CcClient, PiClient } from "./client/index.ts";
 import { loadGuardConfig } from "./config.ts";
 import { createContextManager } from "./context/manager.ts";
 import { ConfigError } from "./errors.ts";
+import { EventEmitter } from "./hooks/events.ts";
 import { HookManager } from "./hooks/manager.ts";
 import { runLoop } from "./loop.ts";
 import { createDefaultRegistry } from "./tools/index.ts";
@@ -95,6 +96,8 @@ export async function runCommand(
 		verbose: config.verbose,
 	});
 
+	const eventEmitter = new EventEmitter(config.json);
+
 	const loopOptions: LoopOptions = {
 		task: prompt,
 		systemPrompt,
@@ -102,6 +105,7 @@ export async function runCommand(
 		maxTurns: config.maxTurns,
 		cwd: config.cwd,
 		hookManager: hookManager ?? undefined,
+		eventEmitter,
 	};
 
 	return runLoop(client, tools, contextManager, loopOptions);
