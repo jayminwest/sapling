@@ -1,35 +1,30 @@
 /**
  * Standardized JSON envelope helpers for Sapling CLI output.
  *
- * Success envelope: { "name": "@os-eco/sapling-cli", "version": "...", ...data }
- * Error envelope:   { "error": { "code": "...", "message": "...", "details": {...} } }
+ * Success envelope: { "success": true, "command": "<name>", ...data }
+ * Error envelope:   { "success": false, "command": "<name>", "error": "<message>", ...details }
  */
 
-import { VERSION } from "./index.ts";
-
-export interface JsonSuccess<_T extends Record<string, unknown>> {
-	name: string;
-	version: string;
+export interface JsonSuccess {
+	success: true;
+	command: string;
 	[key: string]: unknown;
 }
 
-export interface JsonErrorDetail {
-	code: string;
-	message: string;
-	details?: Record<string, unknown>;
-}
-
 export interface JsonErrorEnvelope {
-	error: JsonErrorDetail;
+	success: false;
+	command: string;
+	error: string;
+	[key: string]: unknown;
 }
 
 /**
  * Wrap data in the standard success envelope.
  */
-export function jsonOutput<T extends Record<string, unknown>>(data: T): string {
-	const envelope = {
-		name: "@os-eco/sapling-cli",
-		version: VERSION,
+export function jsonOutput<T extends Record<string, unknown>>(command: string, data: T): string {
+	const envelope: JsonSuccess = {
+		success: true,
+		command,
 		...data,
 	};
 	return JSON.stringify(envelope);
@@ -39,12 +34,15 @@ export function jsonOutput<T extends Record<string, unknown>>(data: T): string {
  * Wrap an error in the standard error envelope.
  */
 export function jsonError(
-	code: string,
+	command: string,
 	message: string,
 	details?: Record<string, unknown>,
 ): string {
 	const envelope: JsonErrorEnvelope = {
-		error: { code, message, ...(details ? { details } : {}) },
+		success: false,
+		command,
+		error: message,
+		...(details ?? {}),
 	};
 	return JSON.stringify(envelope);
 }
@@ -52,17 +50,17 @@ export function jsonError(
 /**
  * Print a success envelope to stdout.
  */
-export function printJson<T extends Record<string, unknown>>(data: T): void {
-	console.log(jsonOutput(data));
+export function printJson<T extends Record<string, unknown>>(command: string, data: T): void {
+	console.log(jsonOutput(command, data));
 }
 
 /**
  * Print an error envelope to stdout (JSON mode keeps everything on stdout).
  */
 export function printJsonError(
-	code: string,
+	command: string,
 	message: string,
 	details?: Record<string, unknown>,
 ): void {
-	console.log(jsonError(code, message, details));
+	console.log(jsonError(command, message, details));
 }

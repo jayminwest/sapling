@@ -3,18 +3,40 @@ import { Command } from "commander";
 import { runCommand } from "./cli.ts";
 import { loadConfig } from "./config.ts";
 import { printJson, printJsonError } from "./json.ts";
-import { setColorEnabled } from "./logging/color.ts";
+import { colors, setColorEnabled } from "./logging/color.ts";
 import { configure, logger } from "./logging/logger.ts";
 import type { LlmBackend, RunOptions } from "./types.ts";
 
 export const VERSION = "0.1.1";
+
+const startTime = Date.now();
+
+// Handle --version --json before Commander takes over (sapling-0bbd)
+if (
+	(process.argv.includes("--version") || process.argv.includes("-V")) &&
+	process.argv.includes("--json")
+) {
+	console.log(
+		JSON.stringify({
+			name: "@os-eco/sapling-cli",
+			version: VERSION,
+			runtime: "bun",
+			platform: `${process.platform}-${process.arch}`,
+		}),
+	);
+	process.exit(0);
+}
 
 const program = new Command();
 
 program
 	.name("sapling")
 	.description("Headless coding agent with proactive context management")
-	.version(VERSION);
+	.version(VERSION)
+	.addHelpText("beforeAll", () => {
+		// Branded header: tool name bold+cyan, version dim, tagline default (sapling-46a7)
+		return `${colors.bold(colors.cyan("sapling"))} ${colors.dim(`v${VERSION}`)}\nHeadless coding agent with proactive context management\n`;
+	});
 
 program
 	.command("run <prompt>")
@@ -26,6 +48,7 @@ program
 	.option("--max-turns <n>", "Max turns", "200")
 	.option("--verbose", "Log context manager decisions")
 	.option("--json", "NDJSON event output on stdout")
+	.option("--timing", "Output elapsed execution time to stderr") // sapling-bcb3
 	.option("-q, --quiet", "Suppress non-essential output")
 	.action(async (prompt: string, options: Record<string, string | boolean | undefined>) => {
 		const opts: RunOptions = {
@@ -55,14 +78,14 @@ program
 
 		if (config.json) {
 			if (result.exitReason === "error") {
-				printJsonError("TASK_ERROR", result.error ?? "Task failed", {
+				printJsonError("run", result.error ?? "Task failed", {
 					exitReason: result.exitReason,
 					totalTurns: result.totalTurns,
 					totalInputTokens: result.totalInputTokens,
 					totalOutputTokens: result.totalOutputTokens,
 				});
 			} else {
-				printJson({
+				printJson("run", {
 					exitReason: result.exitReason,
 					totalTurns: result.totalTurns,
 					totalInputTokens: result.totalInputTokens,
@@ -76,8 +99,14 @@ program
 			);
 		}
 
+		// --timing: print elapsed time to stderr in muted text (sapling-bcb3)
+		if (options.timing) {
+			process.stderr.write(colors.dim(`Done in ${Date.now() - startTime}ms\n`));
+		}
+
+		// Use process.exitCode instead of process.exit(1) to allow cleanup/finally (sapling-43da)
 		if (result.exitReason === "error") {
-			process.exit(1);
+			process.exitCode = 1;
 		}
 	});
 
