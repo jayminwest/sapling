@@ -206,10 +206,6 @@ export async function runLoop(
 				.map((b) => b.text)
 				.join("\n");
 
-			if (finalText) {
-				process.stdout.write(`${finalText}\n`);
-			}
-
 			logger.info(`Task complete after ${totalTurns} turn(s)`, {
 				inputTokens: totalInputTokens,
 				outputTokens: totalOutputTokens,
@@ -221,6 +217,7 @@ export async function runLoop(
 				totalTurns,
 				totalInputTokens,
 				totalOutputTokens,
+				responseText: finalText || undefined,
 			};
 		}
 

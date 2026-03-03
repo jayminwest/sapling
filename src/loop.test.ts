@@ -187,6 +187,38 @@ describe("runLoop", () => {
 		expect(result.totalTurns).toBe(1);
 	});
 
+	it("returns responseText in the result when task completes with text", async () => {
+		const client = createMockClient([mockTextResponse("The answer is 42.")]);
+		const registry = createRegistry([]);
+
+		const result = await runLoop(client, registry, ctx, defaultOptions(testDir));
+
+		expect(result.exitReason).toBe("task_complete");
+		expect(result.responseText).toBe("The answer is 42.");
+	});
+
+	it("returns undefined responseText when LLM response has no text blocks", async () => {
+		// A response with only tool_use blocks that somehow has no text when done
+		// We simulate: first call uses a tool, second call responds with empty text
+		const emptyTextResponse: LlmResponse = {
+			content: [],
+			usage: { inputTokens: 100, outputTokens: 50 },
+			model: "mock-model",
+			stopReason: "end_turn",
+		};
+		const responses: LlmResponse[] = [
+			mockToolUseResponse("echo", { message: "hi" }, "tc1"),
+			emptyTextResponse,
+		];
+		const client = createMockClient(responses);
+		const registry = createRegistry([createEchoTool()]);
+
+		const result = await runLoop(client, registry, ctx, defaultOptions(testDir));
+
+		expect(result.exitReason).toBe("task_complete");
+		expect(result.responseText).toBeUndefined();
+	});
+
 	it("returns max_turns when turn limit is reached", async () => {
 		// Always responds with a tool call — never stops naturally
 		const client = createMockClient([mockToolUseResponse("echo", { message: "hello" }, "tc1")]);

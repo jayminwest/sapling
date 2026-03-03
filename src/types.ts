@@ -80,6 +80,7 @@ export interface LoopResult {
 	totalInputTokens: number;
 	totalOutputTokens: number;
 	error?: string;
+	responseText?: string;
 }
 
 // ─── Config Types ─────────────────────────────────────────────────────────────
