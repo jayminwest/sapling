@@ -1,6 +1,10 @@
 #!/usr/bin/env bun
 import { Command } from "commander";
 import { runCommand } from "./cli.ts";
+import { registerCompletionsCommand } from "./commands/completions.ts";
+import { registerDoctorCommand } from "./commands/doctor.ts";
+import { registerTypoHandler } from "./commands/typo.ts";
+import { registerUpgradeCommand } from "./commands/upgrade.ts";
 import { loadConfig } from "./config.ts";
 import { printJson, printJsonError } from "./json.ts";
 import { colors, setColorEnabled } from "./logging/color.ts";
@@ -116,5 +120,11 @@ program
 	.action(() => {
 		console.log(VERSION);
 	});
+
+program.showSuggestionAfterError(false);
+registerCompletionsCommand(program);
+registerUpgradeCommand(program);
+registerDoctorCommand(program);
+registerTypoHandler(program);
 
 program.parse(process.argv);
