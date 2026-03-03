@@ -207,7 +207,7 @@ export async function runLoop(
 				.join("\n");
 
 			if (finalText) {
-				logger.info(finalText);
+				process.stdout.write(`${finalText}\n`);
 			}
 
 			logger.info(`Task complete after ${totalTurns} turn(s)`, {
