@@ -95,6 +95,9 @@ export class CcClient implements LlmClient {
 
 		// Inject Sapling tool definitions into the system prompt so the LLM knows
 		// the exact tool names, descriptions, and input schemas to use in tool_calls.
+		// This prevents the LLM from using CC's built-in capitalized names (Write, Read, Bash)
+		// instead of Sapling's lowercase names (write, read, bash), and also ensures the
+		// correct input schemas are used (e.g., Sapling uses 'file_path', CC uses 'path').
 		let systemPrompt = request.systemPrompt;
 		if (request.tools.length > 0) {
 			const toolDefs = request.tools
@@ -103,7 +106,8 @@ export class CcClient implements LlmClient {
 						`- **${t.name}**: ${t.description}\n  Input schema: ${JSON.stringify(t.input_schema)}`,
 				)
 				.join("\n");
-			systemPrompt = `${systemPrompt}\n\n## Available Tools\n\n${toolDefs}`;
+			const toolNames = request.tools.map((t) => t.name).join(", ");
+			systemPrompt = `${systemPrompt}\n\n## Available Tools\n\nYou MUST use the exact tool names listed below in your tool_calls. Do not use capitalized names, aliases, or built-in Claude tool names.\n\n${toolDefs}\n\nIn your tool_calls JSON, the "name" field MUST exactly match one of: ${toolNames}`;
 		}
 
 		const args: string[] = [
@@ -214,10 +218,13 @@ export class CcClient implements LlmClient {
 		if (structured.tool_calls && structured.tool_calls.length > 0) {
 			stopReason = "tool_use";
 			for (const tc of structured.tool_calls) {
+				// Normalize tool name to lowercase — the LLM inside CC may return capitalized
+				// names (Write, Read, Bash) even when instructed to use Sapling's lowercase names.
+				// ToolRegistry.get() is case-sensitive, so normalization prevents 'Tool not found' errors.
 				content.push({
 					type: "tool_use",
 					id: crypto.randomUUID(),
-					name: tc.name,
+					name: tc.name.toLowerCase(),
 					input: tc.input,
 				});
 			}

@@ -175,6 +175,81 @@ describe("CcClient", () => {
 			expect(systemPromptArg).toContain("Run a bash command");
 		});
 
+		it("includes explicit directive to use exact lowercase names in system prompt", async () => {
+			const structured = { thinking: "ok", text_response: "done" };
+			spawnSpy.mockReturnValue(makeFakeProcess({ exitCode: 0, stdout: makeCcOutput(structured) }));
+
+			const client = new CcClient();
+			await client.call({
+				...baseRequest,
+				tools: [
+					{ name: "bash", description: "run bash", input_schema: {} },
+					{ name: "write", description: "write file", input_schema: {} },
+				],
+			});
+
+			const callArgs = spawnSpy.mock.calls[0];
+			const args = callArgs?.[0] as string[];
+			const sysPromptIndex = args.indexOf("--system-prompt") + 1;
+			const systemPromptArg = args[sysPromptIndex];
+			// Must instruct the LLM to use exact names, not capitalized aliases
+			expect(systemPromptArg).toContain("MUST use the exact tool names");
+			expect(systemPromptArg).toContain("Do not use capitalized names");
+			// Must list the allowed names
+			expect(systemPromptArg).toContain("bash, write");
+		});
+
+		it("normalizes capitalized tool names from CC to lowercase", async () => {
+			// CC LLM may return 'Write', 'Read', 'Bash' despite instructions
+			const structured = {
+				thinking: "Writing a file.",
+				tool_calls: [{ name: "Write", input: { file_path: "/tmp/foo.ts", content: "hello" } }],
+			};
+			spawnSpy.mockReturnValue(makeFakeProcess({ exitCode: 0, stdout: makeCcOutput(structured) }));
+
+			const client = new CcClient();
+			const result = await client.call({
+				...baseRequest,
+				tools: [{ name: "write", description: "write a file", input_schema: {} }],
+			});
+
+			expect(result.stopReason).toBe("tool_use");
+			const toolBlock = result.content.find((b) => b.type === "tool_use");
+			expect(toolBlock).toBeDefined();
+			if (toolBlock?.type === "tool_use") {
+				// Must be normalized to lowercase 'write', not 'Write'
+				expect(toolBlock.name).toBe("write");
+			}
+		});
+
+		it("normalizes all CC built-in capitalized names to lowercase", async () => {
+			const structured = {
+				thinking: "Calling multiple tools.",
+				tool_calls: [
+					{ name: "Read", input: { file_path: "/tmp/a.ts" } },
+					{ name: "Bash", input: { command: "ls" } },
+					{ name: "Glob", input: { pattern: "**/*.ts" } },
+				],
+			};
+			spawnSpy.mockReturnValue(makeFakeProcess({ exitCode: 0, stdout: makeCcOutput(structured) }));
+
+			const client = new CcClient();
+			const result = await client.call({
+				...baseRequest,
+				tools: [
+					{ name: "read", description: "read file", input_schema: {} },
+					{ name: "bash", description: "run bash", input_schema: {} },
+					{ name: "glob", description: "glob files", input_schema: {} },
+				],
+			});
+
+			expect(result.stopReason).toBe("tool_use");
+			const toolBlocks = result.content.filter((b) => b.type === "tool_use");
+			expect(toolBlocks).toHaveLength(3);
+			const names = toolBlocks.map((b) => (b.type === "tool_use" ? b.name : ""));
+			expect(names).toEqual(["read", "bash", "glob"]);
+		});
+
 		it("does not inject tool section when no tools provided", async () => {
 			const structured = { thinking: "ok", text_response: "done" };
 			spawnSpy.mockReturnValue(makeFakeProcess({ exitCode: 0, stdout: makeCcOutput(structured) }));
