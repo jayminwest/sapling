@@ -15,6 +15,7 @@
 
 import { logger } from "../logging/logger.ts";
 import type { GuardConfig, IHookManager } from "../types.ts";
+import { evaluateGuards } from "./guards.ts";
 
 export class HookManager implements IHookManager {
 	readonly config: GuardConfig;
@@ -29,6 +30,14 @@ export class HookManager implements IHookManager {
 	 * Returns true to allow the tool call to proceed.
 	 */
 	preToolCall(toolName: string, input: Record<string, unknown>): boolean {
+		// 1. Evaluate flat guard config first
+		const guardResult = evaluateGuards(toolName, input, this.config);
+		if (!guardResult.allowed) {
+			logger.warn(`Tool call blocked by guard: "${toolName}": ${guardResult.reason}`, { input });
+			return false;
+		}
+
+		// 2. Evaluate rules array (existing logic)
 		for (const rule of this.config.rules) {
 			if (rule.event !== "pre_tool_call") continue;
 			// A rule without a tool field matches all tools

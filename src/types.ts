@@ -205,6 +205,12 @@ export interface GuardRule {
 export interface GuardConfig {
 	version?: string;
 	rules: GuardRule[];
+	// Flat guard config (evaluated before rules)
+	pathBoundary?: string; // base directory — block file ops outside this path
+	fileScope?: string[]; // allowed files — block file ops not in this list
+	readOnly?: boolean; // block all write/edit tools
+	blockedBashPatterns?: string[]; // regex patterns — block bash commands matching any
+	blockedTools?: string[]; // tool names to block entirely
 }
 
 // ─── Scoring Types ────────────────────────────────────────────────────────────
