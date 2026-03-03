@@ -97,7 +97,10 @@ sapling/
       prune.ts            Message truncation + summarization strategies
       archive.ts          Rolling work summary + file modification tracking
       reshape.ts          Message array reconstruction
-    logging/              Structured JSON logging (pino-style)
+    logging/              Structured JSON logging + color control
+    bench/
+      harness.ts          Deterministic context pipeline benchmarking
+      scenarios.ts        14 predefined agent workload scenarios
   agents/
     builder.md            Builder persona — writes code, runs quality gates
     reviewer.md           Reviewer persona — reviews code, no edits
@@ -111,7 +114,7 @@ sapling/
 | `cc` (default) | Claude Code subscription | `claude -p` subprocess |
 | `sdk` | Anthropic API per-token | `@anthropic-ai/sdk` direct calls |
 
-The CC subprocess backend uses Claude Code as a structured-output endpoint — Sapling owns the agent loop, tools, and context management. CC just handles auth and billing.
+The SDK backend auto-detects when running inside a Claude Code session. The CC subprocess backend uses Claude Code as a structured-output endpoint — Sapling owns the agent loop, tools, and context management. CC just handles auth and billing.
 
 ## Part of os-eco
 
@@ -140,7 +143,7 @@ Sapling is part of the [os-eco](https://github.com/jayminwest/os-eco) AI agent t
 git clone https://github.com/jayminwest/sapling.git
 cd sapling
 bun install
-bun test                  # 164 tests across 17 files (377 expect() calls)
+bun test                  # 279 tests across 19 files (921 expect() calls)
 bun run lint              # Biome linting
 bun run typecheck         # TypeScript strict check
 ```

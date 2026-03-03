@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-03-02
+
+### Added
+
+#### Context Pipeline Enhancements
+- File hash tracking (`fileHashes`) wired through the context manager for content-aware scoring
+- Grep result summarization in the prune stage — large grep outputs are condensed instead of dropped
+- Unresolved-question scoring signal — messages containing open questions score higher to stay in context
+
+#### Benchmarking Harness
+- New `src/bench/` module with deterministic context pipeline benchmarking
+- Scenario-based test harness (`harness.ts`) with reproducible message sequences
+- 14 predefined scenarios (`scenarios.ts`) covering common agent workloads
+- Full test coverage for the harness itself (`harness.test.ts`)
+
+#### SDK Backend Improvements
+- SDK backend (`--backend sdk`) promoted to primary with auto-detection inside Claude Code sessions
+- Error classification for Anthropic API errors (auth, rate-limit, overload, model-not-found)
+
+#### Logging & Output
+- `--json` flag now produces structured NDJSON envelope output on stdout
+- All `console.*` calls routed through a structured logger (`src/logging/`)
+- Logger initialization wired from CLI flags (`--verbose`, `--quiet`, `--json`)
+
+### Fixed
+- Context pruning no-op bug — history messages were not categorized as `history`, so the prune stage skipped them entirely
+- Index misalignment in `pruneMessages` after dropped entries caused messages to shift incorrectly
+- Consecutive user messages in `reshapeMessages` violated the Anthropic API's alternating-role requirement
+- `findToolResult` type checks in `archive.ts` used wrong comparison, missing tool results
+- CC client now reads the `structured_output` field from the `claude` CLI response (was silently ignoring it)
+- CC client normalizes tool names to lowercase and strengthens the name directive in the system prompt
+- Sapling tool definitions are now injected into the CC system prompt so the model knows its available tools
+
+### Changed
+- Test suite grown from 164 tests / 17 files / 377 expects to 279 tests / 19 files / 921 expects
+
 ## [0.1.0] - 2026-03-02
 
 Initial release of Sapling — a headless coding agent with proactive context management.
@@ -66,5 +102,6 @@ Initial release of Sapling — a headless coding agent with proactive context ma
 - Real temp directory helpers (`src/test-helpers.ts`)
 - Full coverage of: agent loop, context pipeline (all 5 stages), both LLM clients, all 6 tools, config validation, error hierarchy
 
-[Unreleased]: https://github.com/jayminwest/sapling/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jayminwest/sapling/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/jayminwest/sapling/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/jayminwest/sapling/releases/tag/v0.1.0

@@ -11,7 +11,7 @@ Sapling (`@os-eco/sapling-cli`, CLI: `sp` / `sapling`) is a headless coding agen
 All commands use **Bun** as the runtime. There is no build/compile step — TypeScript runs directly.
 
 ```bash
-bun test                  # Run all 164 tests (17 files, 377 expect() calls)
+bun test                  # Run all 279 tests (19 files, 921 expect() calls)
 bun test src/loop.test.ts # Run a single test file
 bun run lint              # Lint (Biome)
 bun run lint:fix          # Lint + auto-fix
@@ -46,6 +46,14 @@ Runs every turn via `SaplingContextManager.process()`:
 3. **Prune** (`prune.ts`) — truncate large bash output, replace stale file reads, summarize/drop low-score old messages
 4. **Archive** (`archive.ts`) — dropped messages become a rolling work summary (template-based, no LLM call)
 5. **Reshape** (`reshape.ts`) — rebuild: [task] → [archive] → [pruned history] → [current turn]
+
+### Benchmarking (`src/bench/`)
+
+Deterministic context pipeline benchmarking: `harness.ts` runs scenarios through the pipeline, `scenarios.ts` defines 14 predefined message sequences covering common agent workloads.
+
+### Logging (`src/logging/`)
+
+Structured logger (`logger.ts`) with JSON output support and color control (`color.ts`). All console output routed through the logger for `--json`/`--quiet` mode compatibility.
 
 ### Other source files
 
