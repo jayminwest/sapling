@@ -9,6 +9,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { AnthropicClient, CcClient } from "./client/index.ts";
 import { createContextManager } from "./context/manager.ts";
+import { ConfigError } from "./errors.ts";
 import { runLoop } from "./loop.ts";
 import { createDefaultRegistry } from "./tools/index.ts";
 import type { LlmClient, LoopOptions, RunOptions, SaplingConfig } from "./types.ts";
@@ -53,7 +54,18 @@ export async function runCommand(
 	let systemPrompt = DEFAULT_SYSTEM_PROMPT;
 	if (opts.systemPromptFile) {
 		const filePath = resolve(opts.systemPromptFile);
-		systemPrompt = await readFile(filePath, "utf-8");
+		try {
+			systemPrompt = await readFile(filePath, "utf-8");
+		} catch (err) {
+			if (
+				err instanceof Error &&
+				"code" in err &&
+				(err as NodeJS.ErrnoException).code === "ENOENT"
+			) {
+				throw new ConfigError(`System prompt file not found: ${filePath}`, "CONFIG_FILE_NOT_FOUND");
+			}
+			throw err;
+		}
 	}
 
 	const client = createClient(config);
