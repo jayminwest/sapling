@@ -58,6 +58,10 @@ const UNRECOVERABLE_CODES = new Set([
 	"MODEL_NOT_FOUND",
 	"INVALID_API_KEY",
 	"PERMISSION_DENIED",
+	"SDK_AUTH_FAILED",
+	"SDK_PERMISSION_DENIED",
+	"SDK_MODEL_NOT_FOUND",
+	"SDK_NOT_INSTALLED",
 ]);
 
 // ─── Internal Helpers ─────────────────────────────────────────────────────────

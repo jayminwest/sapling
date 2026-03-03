@@ -80,6 +80,10 @@ export function loadConfig(overrides: Partial<SaplingConfig> = {}): SaplingConfi
 		fromEnv.backend = envBackend as LlmBackend;
 	}
 
+	if (!fromEnv.backend && process.env.CLAUDECODE) {
+		fromEnv.backend = "sdk";
+	}
+
 	const envMaxTurns = process.env.SAPLING_MAX_TURNS;
 	if (envMaxTurns) {
 		const n = parseInt(envMaxTurns, 10);

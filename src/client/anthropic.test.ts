@@ -2,6 +2,7 @@
 // We mock the SDK module to test response mapping and error handling without API calls.
 
 import { describe, expect, it, mock } from "bun:test";
+import type { SdkClient, SdkResponse } from "./anthropic.ts";
 import { AnthropicClient } from "./anthropic.ts";
 import type { LlmRequest } from "./types.ts";
 
@@ -11,14 +12,7 @@ const baseRequest: LlmRequest = {
 	tools: [],
 };
 
-function makeSdkResponse(
-	overrides?: Partial<{
-		content: unknown[];
-		usage: unknown;
-		model: string;
-		stop_reason: string;
-	}>,
-) {
+function makeSdkResponse(overrides?: Partial<SdkResponse>): SdkResponse {
 	return {
 		content: overrides?.content ?? [{ type: "text", text: "Hi there!" }],
 		usage: overrides?.usage ?? { input_tokens: 10, output_tokens: 5 },
@@ -157,6 +151,82 @@ describe("AnthropicClient", () => {
 			await expect(client.call(baseRequest)).rejects.toMatchObject({
 				code: "SDK_API_ERROR",
 			});
+		});
+	});
+
+	describe("dependency injection (_client)", () => {
+		function makeDiClient(createFn: SdkClient["messages"]["create"]): SdkClient {
+			return {
+				messages: { create: createFn },
+			};
+		}
+
+		it("uses injected _client instead of dynamic import", async () => {
+			const sdkResp = makeSdkResponse({ content: [{ type: "text", text: "DI works!" }] });
+			const diClient = makeDiClient(() => Promise.resolve(sdkResp));
+			const client = new AnthropicClient({ _client: diClient });
+
+			const result = await client.call(baseRequest);
+			expect(result.content[0]).toMatchObject({ type: "text", text: "DI works!" });
+		});
+
+		it("passes claude-sonnet-4-6 as default model", async () => {
+			let capturedModel: unknown;
+			const sdkResp = makeSdkResponse();
+			const diClient = makeDiClient((params) => {
+				capturedModel = (params as { model: string }).model;
+				return Promise.resolve(sdkResp);
+			});
+			const client = new AnthropicClient({ _client: diClient });
+
+			await client.call(baseRequest);
+			expect(capturedModel).toBe("claude-sonnet-4-6");
+		});
+
+		it("classifies 401 as SDK_AUTH_FAILED", async () => {
+			const diClient = makeDiClient(() => Promise.reject({ status: 401, message: "auth error" }));
+			const client = new AnthropicClient({ _client: diClient });
+
+			await expect(client.call(baseRequest)).rejects.toMatchObject({ code: "SDK_AUTH_FAILED" });
+		});
+
+		it("classifies 403 as SDK_PERMISSION_DENIED", async () => {
+			const diClient = makeDiClient(() => Promise.reject({ status: 403, message: "forbidden" }));
+			const client = new AnthropicClient({ _client: diClient });
+
+			await expect(client.call(baseRequest)).rejects.toMatchObject({
+				code: "SDK_PERMISSION_DENIED",
+			});
+		});
+
+		it("classifies 404 as SDK_MODEL_NOT_FOUND", async () => {
+			const diClient = makeDiClient(() => Promise.reject({ status: 404, message: "not found" }));
+			const client = new AnthropicClient({ _client: diClient });
+
+			await expect(client.call(baseRequest)).rejects.toMatchObject({
+				code: "SDK_MODEL_NOT_FOUND",
+			});
+		});
+
+		it("classifies 429 as SDK_RATE_LIMITED", async () => {
+			const diClient = makeDiClient(() => Promise.reject({ status: 429, message: "rate limited" }));
+			const client = new AnthropicClient({ _client: diClient });
+
+			await expect(client.call(baseRequest)).rejects.toMatchObject({ code: "SDK_RATE_LIMITED" });
+		});
+
+		it("classifies 529 as SDK_OVERLOADED", async () => {
+			const diClient = makeDiClient(() => Promise.reject({ status: 529, message: "overloaded" }));
+			const client = new AnthropicClient({ _client: diClient });
+
+			await expect(client.call(baseRequest)).rejects.toMatchObject({ code: "SDK_OVERLOADED" });
+		});
+
+		it("classifies plain Error as SDK_API_ERROR", async () => {
+			const diClient = makeDiClient(() => Promise.reject(new Error("network error")));
+			const client = new AnthropicClient({ _client: diClient });
+
+			await expect(client.call(baseRequest)).rejects.toMatchObject({ code: "SDK_API_ERROR" });
 		});
 	});
 });

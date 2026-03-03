@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { DEFAULT_CONFIG, loadConfig, validateConfig } from "./config.ts";
 import { ConfigError } from "./errors.ts";
 
@@ -55,5 +55,43 @@ describe("loadConfig", () => {
 	it("applies overrides", () => {
 		const config = loadConfig({ maxTurns: 10 });
 		expect(config.maxTurns).toBe(10);
+	});
+});
+
+describe("loadConfig CC session auto-detect", () => {
+	let savedEnv: Record<string, string | undefined>;
+
+	beforeEach(() => {
+		savedEnv = {
+			CLAUDECODE: process.env.CLAUDECODE,
+			SAPLING_BACKEND: process.env.SAPLING_BACKEND,
+		};
+	});
+
+	afterEach(() => {
+		if (savedEnv.CLAUDECODE === undefined) {
+			delete process.env.CLAUDECODE;
+		} else {
+			process.env.CLAUDECODE = savedEnv.CLAUDECODE;
+		}
+		if (savedEnv.SAPLING_BACKEND === undefined) {
+			delete process.env.SAPLING_BACKEND;
+		} else {
+			process.env.SAPLING_BACKEND = savedEnv.SAPLING_BACKEND;
+		}
+	});
+
+	it("auto-selects sdk when CLAUDECODE is set", () => {
+		process.env.CLAUDECODE = "1";
+		delete process.env.SAPLING_BACKEND;
+		const config = loadConfig();
+		expect(config.backend).toBe("sdk");
+	});
+
+	it("respects explicit SAPLING_BACKEND=cc even when CLAUDECODE is set", () => {
+		process.env.CLAUDECODE = "1";
+		process.env.SAPLING_BACKEND = "cc";
+		const config = loadConfig();
+		expect(config.backend).toBe("cc");
 	});
 });

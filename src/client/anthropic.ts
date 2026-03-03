@@ -4,23 +4,24 @@ import type { ContentBlock, LlmClient, LlmRequest, LlmResponse } from "./types.t
 interface AnthropicConfig {
 	model?: string;
 	apiKey?: string;
+	_client?: SdkClient;
 }
 
-interface SdkTextBlock {
+export interface SdkTextBlock {
 	type: "text";
 	text: string;
 }
 
-interface SdkToolUseBlock {
+export interface SdkToolUseBlock {
 	type: "tool_use";
 	id: string;
 	name: string;
 	input: Record<string, unknown>;
 }
 
-type SdkContentBlock = SdkTextBlock | SdkToolUseBlock;
+export type SdkContentBlock = SdkTextBlock | SdkToolUseBlock;
 
-interface SdkResponse {
+export interface SdkResponse {
 	content: SdkContentBlock[];
 	usage: {
 		input_tokens: number;
@@ -32,7 +33,7 @@ interface SdkResponse {
 	stop_reason: string;
 }
 
-interface SdkClient {
+export interface SdkClient {
 	messages: {
 		create(params: {
 			model: string;
@@ -42,6 +43,29 @@ interface SdkClient {
 			max_tokens: number;
 		}): Promise<SdkResponse>;
 	};
+}
+
+function classifySdkError(err: unknown): { message: string; code: string } {
+	const message = err instanceof Error ? err.message : String(err);
+	const status =
+		typeof err === "object" && err !== null && "status" in err
+			? (err as { status: unknown }).status
+			: undefined;
+	if (typeof status === "number") {
+		switch (status) {
+			case 401:
+				return { message, code: "SDK_AUTH_FAILED" };
+			case 403:
+				return { message, code: "SDK_PERMISSION_DENIED" };
+			case 404:
+				return { message, code: "SDK_MODEL_NOT_FOUND" };
+			case 429:
+				return { message, code: "SDK_RATE_LIMITED" };
+			case 529:
+				return { message, code: "SDK_OVERLOADED" };
+		}
+	}
+	return { message, code: "SDK_API_ERROR" };
 }
 
 export class AnthropicClient implements LlmClient {
@@ -54,6 +78,9 @@ export class AnthropicClient implements LlmClient {
 	constructor(config?: AnthropicConfig) {
 		this.model = config?.model;
 		this.apiKey = config?.apiKey;
+		if (config?._client) {
+			this.sdkClient = config._client;
+		}
 	}
 
 	estimateTokens(text: string): number {
@@ -135,8 +162,8 @@ export class AnthropicClient implements LlmClient {
 			};
 		} catch (err) {
 			if (err instanceof ClientError) throw err;
-			const message = err instanceof Error ? err.message : String(err);
-			throw new ClientError(message, "SDK_API_ERROR", { cause: err });
+			const classified = classifySdkError(err);
+			throw new ClientError(classified.message, classified.code, { cause: err });
 		}
 	}
 }

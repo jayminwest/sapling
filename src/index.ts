@@ -20,7 +20,7 @@ program
 	.description("Execute a task")
 	.option("--model <name>", "Model to use", "claude-sonnet-4-6")
 	.option("--cwd <path>", "Working directory", ".")
-	.option("--backend <cc|sdk>", "LLM backend", "cc")
+	.option("--backend <cc|sdk>", "LLM backend (auto-detects sdk inside CC sessions)", "cc")
 	.option("--system-prompt-file <path>", "Custom system prompt file")
 	.option("--max-turns <n>", "Max turns", "200")
 	.option("--verbose", "Log context manager decisions")

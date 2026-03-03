@@ -79,7 +79,7 @@ export class GrepTool implements Tool {
 				description: "Number of context lines before and after each match",
 			},
 			case_insensitive: {
-				type: "string",
+				type: "boolean",
 				description: "Case-insensitive search",
 			},
 		},
