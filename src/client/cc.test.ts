@@ -283,6 +283,50 @@ describe("CcClient", () => {
 			expect(systemPromptArg).not.toContain("## Available Tools");
 		});
 
+		it("serializes tool_result blocks in user messages correctly", async () => {
+			const structured = { thinking: "ok", text_response: "done" };
+			spawnSpy.mockReturnValue(makeFakeProcess({ exitCode: 0, stdout: makeCcOutput(structured) }));
+
+			const client = new CcClient();
+			const req: LlmRequest = {
+				...baseRequest,
+				messages: [
+					{ role: "user", content: "Run bash" },
+					{
+						role: "assistant",
+						content: [
+							{
+								type: "tool_use" as const,
+								id: "tu-1",
+								name: "bash",
+								input: { command: "ls" },
+							},
+						],
+					},
+					{
+						role: "user",
+						content: [
+							{
+								type: "tool_result" as const,
+								tool_use_id: "tu-1",
+								content: "file1.ts\nfile2.ts",
+							},
+						] as never,
+					},
+				],
+			};
+			await client.call(req);
+
+			const callArgs = spawnSpy.mock.calls[0];
+			expect(callArgs).toBeDefined();
+			const args = callArgs?.[0] as string[];
+			const promptIndex = args.indexOf("-p") + 1;
+			const prompt = args[promptIndex];
+			// Tool result content must appear verbatim, not as '[Tool Call: undefined(undefined)]'
+			expect(prompt).toContain("file1.ts");
+			expect(prompt).not.toContain("undefined");
+		});
+
 		it("serializes plain text user messages correctly", async () => {
 			const structured = { thinking: "ok", text_response: "done" };
 			spawnSpy.mockReturnValue(makeFakeProcess({ exitCode: 0, stdout: makeCcOutput(structured) }));

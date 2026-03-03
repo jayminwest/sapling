@@ -1,5 +1,6 @@
 import { ClientError } from "../errors.ts";
 import { logger } from "../logging/logger.ts";
+import type { ToolResultBlock } from "../types.ts";
 import type {
 	CcStructuredResponse,
 	ContentBlock,
@@ -55,14 +56,17 @@ interface CcRawResponse {
 	model?: string;
 }
 
-function serializeContentBlock(block: ContentBlock): string {
+function serializeContentBlock(block: ContentBlock | ToolResultBlock): string {
 	if (block.type === "text") {
 		return block.text;
+	}
+	if (block.type === "tool_result") {
+		return block.content;
 	}
 	return `[Tool Call: ${block.name}(${JSON.stringify(block.input)})]`;
 }
 
-function serializeMessageContent(content: string | ContentBlock[]): string {
+function serializeMessageContent(content: string | (ContentBlock | ToolResultBlock)[]): string {
 	if (typeof content === "string") {
 		return content;
 	}
@@ -91,7 +95,9 @@ export class CcClient implements LlmClient {
 	async call(request: LlmRequest): Promise<LlmResponse> {
 		const promptLines: string[] = [];
 		for (const msg of request.messages) {
-			const content = serializeMessageContent(msg.content as string | ContentBlock[]);
+			const content = serializeMessageContent(
+				msg.content as string | (ContentBlock | ToolResultBlock)[],
+			);
 			promptLines.push(`[${msg.role === "user" ? "User" : "Assistant"}]: ${content}`);
 		}
 		const prompt = promptLines.join("\n");
