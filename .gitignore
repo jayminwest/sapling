@@ -28,8 +28,5 @@ Thumbs.db
 .overstory/sessions.json
 .overstory/merge-queue.json
 
-# Environment
-.env
-
 # Test artifacts
 coverage/

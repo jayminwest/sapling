@@ -54,7 +54,7 @@ program
 	.option("--cwd <path>", "Working directory", ".")
 	.option("--backend <sdk>", "LLM backend (default: sdk)")
 	.option("--system-prompt-file <path>", "Custom system prompt file")
-	.option("--prompt-file <path>", "Read prompt from a file (alternative to positional argument)")
+	.option("--prompt-file <path>", "Read prompt from file (alternative to positional argument)")
 	.option("--max-turns <n>", "Max turns (default: 200)")
 	.option("--verbose", "Log context manager decisions")
 	.option("--json", "NDJSON event output on stdout")
@@ -67,12 +67,12 @@ program
 			try {
 				const isRpcMode = (options.mode as string | undefined) === "rpc";
 
-				// --prompt-file: read prompt from file if provided and no positional prompt
-				if (!prompt && options.promptFile) {
-					const filePath = options.promptFile as string;
-					const file = Bun.file(filePath);
+				// Load prompt from --prompt-file if provided
+				if (options.promptFile) {
+					const promptFilePath = options.promptFile as string;
+					const file = Bun.file(promptFilePath);
 					if (!(await file.exists())) {
-						process.stderr.write(`Error: prompt file not found: ${filePath}\n`);
+						process.stderr.write(`Error: prompt file not found: ${promptFilePath}\n`);
 						process.exitCode = 1;
 						return;
 					}
@@ -89,7 +89,7 @@ program
 				if (!prompt || !prompt.trim()) {
 					const hint = isRpcMode
 						? " In --mode rpc, stdin is the control channel; provide prompt as argument."
-						: " Provide as argument or pipe via stdin.";
+						: " Provide as argument, --prompt-file <path>, or pipe via stdin.";
 					process.stderr.write(`Error: prompt must not be empty.${hint}\n`);
 					process.exitCode = 1;
 					return;
