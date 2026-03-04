@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-04
+
+### Added
+
+#### New CLI Commands
+- `sp init` command (`src/commands/init.ts`) — scaffolds `.sapling/` project directory structure with `config.yaml` and `session.jsonl`
+- `sp config` command (`src/commands/config.ts`) — get, set, list, and init project/home YAML configuration
+  - Subcommands: `config get <key>`, `config set <key> <value>`, `config list`, `config init`
+
+#### Session Tracking
+- Session history logging (`src/session.ts`) — appends a record to `.sapling/session.jsonl` after each run with prompt summary, token usage, duration, model, exit reason, and turn count
+
+#### YAML Configuration
+- `loadConfig()` extended with project-level (`.sapling/config.yaml`) and home-level (`~/.sapling/config.yaml`) YAML config support
+- Three-layer config cascade: env vars → project YAML → home YAML → defaults
+
+#### Testing
+- Mock-client integration tests (`src/integration.test.ts`) for real tool dispatch without API calls
+- Session tracking tests (`src/session.test.ts`)
+- Config command tests (`src/commands/config.test.ts`)
+- Init command tests (`src/commands/init.test.ts`)
+- Extended `loadConfig` tests for YAML loading (`src/config.test.ts`)
+- v1 pipeline orphan-prevention tests (`src/context/v1/ingest.test.ts`, `src/context/v1/pipeline.test.ts`)
+
+### Fixed
+- Orphaned `tool_use`/`tool_result` blocks after context pipeline compaction — v1 render stage now ensures every `tool_use` has a matching `tool_result` in the output
+
+### Changed
+- **Breaking:** v0 context pipeline removed — all v0 files (`manager.ts`, `measure.ts`, `score.ts`, `prune.ts`, `archive.ts`, `reshape.ts` and their tests) deleted; `--context-pipeline` flag removed; v1 is now the only pipeline
+- Agent loop (`src/loop.ts`) simplified — v0 pipeline branches and `contextPipeline` option removed
+- Benchmark harness (`src/bench/harness.ts`) streamlined for v1-only operation
+- v1 render stage (`src/context/v1/render.ts`) enhanced with orphan detection and session-aware system prompt composition
+- Test suite: 690 tests across 36 files (2619 expect() calls), down from 744/39/2807 due to v0 test removal
+
 ## [0.2.0] - 2026-03-04
 
 ### Added
@@ -319,7 +353,8 @@ Initial release of Sapling — a headless coding agent with proactive context ma
 - Real temp directory helpers (`src/test-helpers.ts`)
 - Full coverage of: agent loop, context pipeline (all 5 stages), both LLM clients, all 6 tools, config validation, error hierarchy
 
-[Unreleased]: https://github.com/jayminwest/sapling/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/jayminwest/sapling/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/jayminwest/sapling/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/jayminwest/sapling/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/jayminwest/sapling/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/jayminwest/sapling/compare/v0.1.3...v0.1.4

@@ -49,13 +49,18 @@ sapling run <prompt>            Execute a task
   --timing                        Show elapsed time on stderr
   --guards-file <path>            Path to guards config JSON file
   --mode <rpc>                    Execution mode: one-shot (default) or rpc
-  --context-pipeline <v0|v1>      Context pipeline version (v1 is default)
   --quiet, -q                     Suppress non-essential output
 
 sapling auth set <provider>     Store API key for a provider (anthropic, minimax)
   --base-url <url>                Custom API base URL for the provider
 sapling auth show               Show configured providers
 sapling auth remove <provider>  Remove stored credentials
+
+sapling init                   Scaffold .sapling/ project directory
+sapling config get <key>       Get a config value
+sapling config set <key> <val> Set a config value
+sapling config list            List all config values
+sapling config init            Create default config file
 
 sapling version                 Print version
   --json                          Output as JSON envelope
@@ -74,7 +79,7 @@ Existing coding agents (Claude Code, Pi, Codex) treat context management as an a
 
 ### The Solution
 
-Sapling manages context continuously, like garbage collection in a managed runtime. The v1 pipeline (default) processes every turn through five stages:
+Sapling manages context continuously, like garbage collection in a managed runtime. The context pipeline processes every turn through five stages:
 
 1. **Ingest** — Parse messages into paired Turn objects, extract metadata (files, errors, decisions)
 2. **Evaluate** — Score each turn's relevance to the current subtask (0–1)
@@ -94,12 +99,15 @@ sapling/
     loop.ts               Agent turn loop (call → dispatch → prune → repeat)
     types.ts              Canonical types and interfaces
     errors.ts             Error hierarchy: SaplingError → ClientError, ToolError, ContextError, ConfigError
-    config.ts             Config loader + env var support + validation
+    config.ts             Config loader (env vars + YAML cascade) + validation
+    session.ts            Session history tracking (.sapling/session.jsonl)
     json.ts               JSON parsing utilities
     test-helpers.ts       Shared test utilities (temp dirs, mock factories)
     integration.test.ts   End-to-end tests (real API, gated behind SAPLING_INTEGRATION_TESTS=1)
     commands/
       auth.ts             API key management (set, show, remove providers)
+      config.ts           Project/home YAML config management (get, set, list, init)
+      init.ts             Scaffold .sapling/ project directory
       completions.ts      Shell completion script generator (bash, zsh, fish)
       upgrade.ts          Self-upgrade from npm
       doctor.ts           Environment health checks
@@ -119,14 +127,8 @@ sapling/
       glob.ts             File pattern matching
       index.ts            Tool registry + createDefaultRegistry()
     context/
-      manager.ts          v0 pipeline orchestrator (SaplingContextManager)
-      measure.ts          Token budget tracking (4 chars/token heuristic)
-      score.ts            Relevance scoring (recency, file overlap, error, decision, size)
-      prune.ts            Message truncation + summarization strategies
-      archive.ts          Rolling work summary + file modification tracking
-      reshape.ts          Message array reconstruction
       v1/
-        pipeline.ts       v1 pipeline orchestrator (SaplingPipelineV1)
+        pipeline.ts       Pipeline orchestrator (SaplingPipelineV1)
         ingest.ts         Parse messages into paired Turn objects with metadata
         evaluate.ts       Score turns 0–1 with weighted signals
         compact.ts        Summarize low-scoring turns, truncate large outputs
@@ -192,7 +194,7 @@ Sapling is part of the [os-eco](https://github.com/jayminwest/os-eco) AI agent t
 git clone https://github.com/jayminwest/sapling.git
 cd sapling
 bun install
-bun test                  # 744 tests across 39 files (2807 expect() calls)
+bun test                  # 690 tests across 36 files (2619 expect() calls)
 bun run lint              # Biome linting
 bun run typecheck         # TypeScript strict check
 ```

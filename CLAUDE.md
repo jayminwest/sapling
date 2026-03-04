@@ -11,7 +11,7 @@ Sapling (`@os-eco/sapling-cli`, CLI: `sp` / `sapling`) is a headless coding agen
 All commands use **Bun** as the runtime. There is no build/compile step — TypeScript runs directly.
 
 ```bash
-bun test                  # Run all 744 tests (39 files, 2807 expect() calls)
+bun test                  # Run all 690 tests (36 files, 2619 expect() calls)
 bun test src/loop.test.ts # Run a single test file
 bun run lint              # Lint (Biome)
 bun run lint:fix          # Lint + auto-fix
@@ -30,7 +30,7 @@ Quality gate before finishing work: `bun test && bun run lint && bun run typeche
 
 ### Agent loop (`src/loop.ts`)
 
-Each turn: call LLM → if no tool calls, stop → execute all tool calls in parallel (`Promise.all`) → append results → run context manager (v0) or v1 pipeline on message array → next turn. Stops on: task complete (no tools), max turns (200), or unrecoverable error. LLM errors use exponential backoff (3 retries, immediate abort on auth/model errors).
+Each turn: call LLM → if no tool calls, stop → execute all tool calls in parallel (`Promise.all`) → append results → run v1 context pipeline on message array → next turn. Stops on: task complete (no tools), max turns (200), or unrecoverable error. LLM errors use exponential backoff (3 retries, immediate abort on auth/model errors).
 
 ### LLM clients (`src/client/`)
 
@@ -39,23 +39,16 @@ Three backends implementing `LlmClient` from `src/types.ts`:
 - **PiClient** (`pi.ts`, deprecated) — spawns `pi` subprocess, communicates via JSONL events; supports multi-provider models
 - **AnthropicClient** (`anthropic.ts`, recommended) — calls Anthropic SDK directly; `@anthropic-ai/sdk` is an optional dep, dynamically imported; supports `ANTHROPIC_BASE_URL` and model alias resolution
 
-### Context pipeline (`src/context/`)
+### Context pipeline (`src/context/v1/`)
 
-**v0** (legacy) — Runs every turn via `SaplingContextManager.process()`:
-1. **Measure** (`measure.ts`) — token budget tracking (4 chars/token heuristic, window split: 15% system, 10% archive, 40% history, 15% current, 20% headroom)
-2. **Score** (`score.ts`) — relevance score 0–1 per message (recency 0.30, file overlap 0.25, error context 0.20, decision content 0.12, unresolved question 0.08, size penalty 0.05)
-3. **Prune** (`prune.ts`) — truncate large bash output, replace stale file reads, summarize/drop low-score old messages
-4. **Archive** (`archive.ts`) — dropped messages become a rolling work summary (template-based, no LLM call)
-5. **Reshape** (`reshape.ts`) — rebuild: [task] → [archive] → [pruned history] → [current turn]
-
-**v1** (`src/context/v1/`) — Turn-based pipeline with `SaplingPipelineV1.process()`:
+Turn-based pipeline with `SaplingPipelineV1.process()`:
 1. **Ingest** (`ingest.ts`) — parses messages into paired `Turn` objects, extracts metadata (files, errors, decisions, questions)
 2. **Evaluate** (`evaluate.ts`) — scores turns 0–1 using weighted signals (recency, file overlap, error context, decisions, questions, size)
 3. **Compact** (`compact.ts`) — summarizes low-scoring turns, truncates large tool outputs
 4. **Budget** (`budget.ts`) — token allocation and enforcement across system/archive/history/current zones
-5. **Render** (`render.ts`) — assembles final message array with archive and composed system prompt
+5. **Render** (`render.ts`) — assembles final message array with archive and composed system prompt; ensures orphaned tool_use/tool_result pairs are never emitted
 
-Types in `types.ts`, archive templates in `templates.ts`. v1 is the default; use `--context-pipeline v0` to fall back to the legacy pipeline.
+Types in `types.ts`, archive templates in `templates.ts`.
 
 ### Benchmarking (`src/bench/`)
 
@@ -75,11 +68,12 @@ Structured logger (`logger.ts`) with JSON output support and color control (`col
 
 ### CLI commands (`src/commands/`)
 
-Subcommands registered from `src/index.ts`: `auth` (API key management in `~/.sapling/auth.json`), `completions` (shell completion scripts for bash/zsh/fish), `upgrade` (check/install latest version), `doctor` (health checks), `version` (shared version utilities). `typo.ts` provides Levenshtein-based command suggestions for unknown commands.
+Subcommands registered from `src/index.ts`: `auth` (API key management in `~/.sapling/auth.json`), `config` (get/set/list/init project and home YAML configuration), `init` (scaffold `.sapling/` project directory), `completions` (shell completion scripts for bash/zsh/fish), `upgrade` (check/install latest version), `doctor` (health checks), `version` (shared version utilities). `typo.ts` provides Levenshtein-based command suggestions for unknown commands.
 
 ### Other source files
 
 - `src/json.ts` — JSON envelope utilities (`{ success, command, ...data }` format)
+- `src/session.ts` — Session history tracking (appends records to `.sapling/session.jsonl`)
 - `src/test-helpers.ts` — Shared test helpers (temp dirs, mock client/tool factories)
 
 ### Tools (`src/tools/`)
@@ -98,7 +92,7 @@ Three system prompt files emitted by Canopy: **builder** (writes code), **review
 - **Tabs for indentation**, 100-char line width (Biome).
 - **Tests are colocated** — `src/foo.test.ts` next to `src/foo.ts`. Tests use real temp directories (helpers in `src/test-helpers.ts`).
 - **Error hierarchy** in `src/errors.ts`: `SaplingError` base → `ClientError`, `ToolError`, `ContextError`, `ConfigError`.
-- **Config** (`src/config.ts`) supports env vars: `SAPLING_MODEL`, `SAPLING_BACKEND`, `SAPLING_MAX_TURNS`, `SAPLING_CONTEXT_WINDOW`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`. Falls back to `~/.sapling/auth.json` credentials. Model alias resolution (e.g., `sonnet` → `claude-sonnet-4-6`).
+- **Config** (`src/config.ts`) three-layer cascade: env vars → project YAML (`.sapling/config.yaml`) → home YAML (`~/.sapling/config.yaml`) → defaults. Env vars: `SAPLING_MODEL`, `SAPLING_BACKEND`, `SAPLING_MAX_TURNS`, `SAPLING_CONTEXT_WINDOW`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`. Falls back to `~/.sapling/auth.json` credentials. Model alias resolution (e.g., `sonnet` → `claude-sonnet-4-6`).
 - **Agent prompt files in `agents/`** are emitted by Canopy — do not manually edit them. Use `cn update <name>` then `cn emit`.
 - **JSONL data files** (`.mulch/`, `.seeds/`, `.canopy/`) use `merge=union` git strategy (see `.gitattributes`).
 
