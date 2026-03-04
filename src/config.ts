@@ -5,6 +5,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { readAuthStore } from "./commands/auth.ts";
 import { ConfigError } from "./errors.ts";
 import type { ContextBudget, GuardConfig, LlmBackend, SaplingConfig } from "./types.ts";
 
@@ -34,6 +35,21 @@ export const DEFAULT_CONFIG: SaplingConfig = {
 };
 
 const VALID_BACKENDS: LlmBackend[] = ["cc", "pi", "sdk"];
+
+/** Known provider base URLs for Anthropic-compatible APIs. */
+const PROVIDER_BASE_URLS: Record<string, string> = {
+	minimax: "https://api.minimax.io/anthropic",
+};
+
+/**
+ * Resolve which auth provider to use based on the model name.
+ * Models starting with "MiniMax" map to the "minimax" provider;
+ * everything else maps to "anthropic".
+ */
+export function resolveProvider(model: string): string {
+	if (model.toLowerCase().startsWith("minimax")) return "minimax";
+	return "anthropic";
+}
 
 /**
  * Resolve a short model alias (e.g. "sonnet", "haiku", "opus") via the
@@ -122,9 +138,10 @@ export async function loadGuardConfig(filePath: string): Promise<GuardConfig | n
 }
 
 /**
- * Load config from environment variables, merging with provided overrides.
+ * Load config from environment variables and auth store, merging with provided overrides.
+ * Auth store (~/.sapling/auth.json) is used as a fallback when env vars are not set.
  */
-export function loadConfig(overrides: Partial<SaplingConfig> = {}): SaplingConfig {
+export async function loadConfig(overrides: Partial<SaplingConfig> = {}): Promise<SaplingConfig> {
 	const fromEnv: Partial<SaplingConfig> = {};
 
 	const envModel = process.env.SAPLING_MODEL;
@@ -153,6 +170,20 @@ export function loadConfig(overrides: Partial<SaplingConfig> = {}): SaplingConfi
 	// ANTHROPIC_API_KEY is the canonical env var; ANTHROPIC_AUTH_TOKEN is a fallback alias.
 	const envApiKey = process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN;
 	if (envApiKey) fromEnv.apiKey = envApiKey;
+
+	// Fall back to auth store when env vars don't provide credentials.
+	if (!fromEnv.apiKey) {
+		const model = overrides.model ?? fromEnv.model ?? DEFAULT_CONFIG.model;
+		const provider = resolveProvider(model);
+		const store = await readAuthStore();
+		const creds = store.providers[provider];
+		if (creds) {
+			fromEnv.apiKey = creds.apiKey;
+			if (!fromEnv.apiBaseUrl) {
+				fromEnv.apiBaseUrl = creds.baseUrl ?? PROVIDER_BASE_URLS[provider];
+			}
+		}
+	}
 
 	return validateConfig({ ...fromEnv, ...overrides });
 }

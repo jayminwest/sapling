@@ -16,9 +16,9 @@ interface DoctorCheck {
 	message: string;
 }
 
-function checkConfig(): DoctorCheck {
+async function checkConfig(): Promise<DoctorCheck> {
 	try {
-		loadConfig();
+		await loadConfig();
 		return { name: "config", status: "pass", message: "Configuration is valid" };
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : String(err);
@@ -120,7 +120,7 @@ export function registerDoctorCommand(program: Command): void {
 			const verbose = opts.verbose ?? false;
 
 			const checks: DoctorCheck[] = [
-				checkConfig(),
+				await checkConfig(),
 				checkBackendCc(),
 				await checkAuth(),
 				checkVersion(),

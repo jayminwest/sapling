@@ -95,7 +95,7 @@ program
 					rpcMode: isRpcMode,
 				};
 
-				const config = loadConfig({
+				const config = await loadConfig({
 					...(opts.model ? { model: opts.model } : {}),
 					...(opts.backend ? { backend: opts.backend } : {}),
 					...(opts.maxTurns !== undefined ? { maxTurns: opts.maxTurns } : {}),

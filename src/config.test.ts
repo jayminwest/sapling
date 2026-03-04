@@ -7,6 +7,7 @@ import {
 	loadConfig,
 	loadGuardConfig,
 	resolveModelAlias,
+	resolveProvider,
 	validateConfig,
 } from "./config.ts";
 import { ConfigError } from "./errors.ts";
@@ -101,48 +102,48 @@ describe("loadConfig", () => {
 		}
 	});
 
-	it("returns default config with no overrides", () => {
-		const config = loadConfig();
+	it("returns default config with no overrides", async () => {
+		const config = await loadConfig();
 		expect(config.model).toBe(DEFAULT_CONFIG.model);
 	});
 
-	it("applies overrides", () => {
-		const config = loadConfig({ maxTurns: 10 });
+	it("applies overrides", async () => {
+		const config = await loadConfig({ maxTurns: 10 });
 		expect(config.maxTurns).toBe(10);
 	});
 
-	it("reads ANTHROPIC_BASE_URL into apiBaseUrl", () => {
+	it("reads ANTHROPIC_BASE_URL into apiBaseUrl", async () => {
 		process.env.ANTHROPIC_BASE_URL = "https://api.minimax.io/anthropic";
-		const config = loadConfig();
+		const config = await loadConfig();
 		expect(config.apiBaseUrl).toBe("https://api.minimax.io/anthropic");
 	});
 
-	it("leaves apiBaseUrl undefined when ANTHROPIC_BASE_URL is not set", () => {
-		const config = loadConfig();
+	it("leaves apiBaseUrl undefined when ANTHROPIC_BASE_URL is not set", async () => {
+		const config = await loadConfig();
 		expect(config.apiBaseUrl).toBeUndefined();
 	});
 
-	it("reads ANTHROPIC_API_KEY into apiKey", () => {
+	it("reads ANTHROPIC_API_KEY into apiKey", async () => {
 		process.env.ANTHROPIC_API_KEY = "sk-test-primary";
-		const config = loadConfig();
+		const config = await loadConfig();
 		expect(config.apiKey).toBe("sk-test-primary");
 	});
 
-	it("falls back to ANTHROPIC_AUTH_TOKEN when ANTHROPIC_API_KEY is not set", () => {
+	it("falls back to ANTHROPIC_AUTH_TOKEN when ANTHROPIC_API_KEY is not set", async () => {
 		process.env.ANTHROPIC_AUTH_TOKEN = "sk-test-fallback";
-		const config = loadConfig();
+		const config = await loadConfig();
 		expect(config.apiKey).toBe("sk-test-fallback");
 	});
 
-	it("prefers ANTHROPIC_API_KEY over ANTHROPIC_AUTH_TOKEN when both are set", () => {
+	it("prefers ANTHROPIC_API_KEY over ANTHROPIC_AUTH_TOKEN when both are set", async () => {
 		process.env.ANTHROPIC_API_KEY = "sk-test-primary";
 		process.env.ANTHROPIC_AUTH_TOKEN = "sk-test-fallback";
-		const config = loadConfig();
+		const config = await loadConfig();
 		expect(config.apiKey).toBe("sk-test-primary");
 	});
 
-	it("leaves apiKey undefined when neither ANTHROPIC_API_KEY nor ANTHROPIC_AUTH_TOKEN is set", () => {
-		const config = loadConfig();
+	it("leaves apiKey undefined when neither ANTHROPIC_API_KEY nor ANTHROPIC_AUTH_TOKEN is set", async () => {
+		const config = await loadConfig();
 		expect(config.apiKey).toBeUndefined();
 	});
 });
@@ -238,14 +239,14 @@ describe("loadConfig backend defaults", () => {
 		}
 	});
 
-	it("defaults to sdk backend", () => {
-		const config = loadConfig();
+	it("defaults to sdk backend", async () => {
+		const config = await loadConfig();
 		expect(config.backend).toBe("sdk");
 	});
 
-	it("respects explicit SAPLING_BACKEND=cc override", () => {
+	it("respects explicit SAPLING_BACKEND=cc override", async () => {
 		process.env.SAPLING_BACKEND = "cc";
-		const config = loadConfig();
+		const config = await loadConfig();
 		expect(config.backend).toBe("cc");
 	});
 });
@@ -298,5 +299,21 @@ describe("resolveModelAlias", () => {
 		process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = "claude-sonnet-4-6-20251201";
 		const config = validateConfig({ model: "sonnet" });
 		expect(config.model).toBe("claude-sonnet-4-6-20251201");
+	});
+});
+
+describe("resolveProvider", () => {
+	it("maps MiniMax models to minimax provider", () => {
+		expect(resolveProvider("MiniMax-M2.5")).toBe("minimax");
+		expect(resolveProvider("minimax-text-01")).toBe("minimax");
+	});
+
+	it("maps Anthropic models to anthropic provider", () => {
+		expect(resolveProvider("claude-sonnet-4-6")).toBe("anthropic");
+		expect(resolveProvider("claude-opus-4-6")).toBe("anthropic");
+	});
+
+	it("defaults unknown models to anthropic provider", () => {
+		expect(resolveProvider("some-other-model")).toBe("anthropic");
 	});
 });
