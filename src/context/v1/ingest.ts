@@ -449,8 +449,17 @@ export function ingest(
 ): IngestResult {
 	const allTurns = extractTurns(messages);
 
-	// Determine how many turns are already tracked
-	const trackedTurnCount = existingOperations.reduce((sum, op) => sum + op.turns.length, 0);
+	// Determine how many turns are already tracked.
+	// After compaction/archiving, the rendered message array has fewer turns than the raw stored
+	// operation turn count:
+	//   - Compacted ops render as 1 synthetic pair (not N original turns)
+	//   - Archived ops render as 0 messages (moved to system prompt)
+	// We must match how the Render stage emits turns, not the raw stored count.
+	const trackedTurnCount = existingOperations.reduce((sum, op) => {
+		if (op.status === "archived") return sum;
+		if (op.status === "compacted") return sum + 1;
+		return sum + op.turns.length;
+	}, 0);
 
 	// New turns are those beyond what's already tracked
 	const newTurns = allTurns.slice(trackedTurnCount);
