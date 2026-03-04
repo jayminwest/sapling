@@ -62,7 +62,6 @@ program
 	.option("-q, --quiet", "Suppress non-essential output")
 	.option("--guards-file <path>", "Path to guards config JSON file")
 	.option("--mode <mode>", "Execution mode: one-shot (default) or rpc")
-	.option("--context-pipeline <version>", "Context pipeline version: v0 (default) or v1")
 	.action(
 		async (prompt: string | undefined, options: Record<string, string | boolean | undefined>) => {
 			try {
@@ -84,9 +83,6 @@ program
 					return;
 				}
 
-				const contextPipelineRaw = options.contextPipeline as string | undefined;
-				const contextPipeline: "v0" | "v1" = contextPipelineRaw === "v0" ? "v0" : "v1";
-
 				const opts: RunOptions = {
 					systemPromptFile: options.systemPromptFile as string | undefined,
 					model: options.model as string | undefined,
@@ -98,7 +94,6 @@ program
 					json: isRpcMode ? true : (options.json as boolean | undefined),
 					guardsFile: options.guardsFile as string | undefined,
 					rpcMode: isRpcMode,
-					contextPipeline,
 				};
 
 				const config = await loadConfig({

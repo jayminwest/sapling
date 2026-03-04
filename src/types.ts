@@ -98,9 +98,7 @@ export interface LoopOptions {
 	eventConfig?: EventConfig;
 	/** Optional callback invoked at turn boundaries to report loop state for RPC getState. */
 	setState?: (state: { turn: number; phase: "calling_llm" | "executing_tools" | "idle" }) => void;
-	/** Context pipeline version: "v0" (default, legacy) or "v1" (new operation-based pipeline). */
-	contextPipeline?: "v0" | "v1";
-	/** Context window size in tokens (required when contextPipeline is "v1"). */
+	/** Context window size in tokens for the v1 pipeline. */
 	contextWindowSize?: number;
 }
 
@@ -153,8 +151,6 @@ export interface RunOptions {
 	json?: boolean;
 	guardsFile?: string;
 	rpcMode?: boolean;
-	/** Context pipeline version: "v0" (default, legacy) or "v1" (new operation-based pipeline). */
-	contextPipeline?: "v0" | "v1";
 }
 
 // ─── Context Types ────────────────────────────────────────────────────────────
@@ -171,20 +167,6 @@ export interface BudgetUtilization {
 	currentTurn: BudgetEntry;
 	headroom: BudgetEntry;
 	total: BudgetEntry;
-}
-
-export interface ContextArchive {
-	workSummary: string;
-	decisions: string[];
-	modifiedFiles: Map<string, string>;
-	fileHashes: Map<string, string>;
-	resolvedErrors: string[];
-}
-
-export interface ContextManager {
-	process(messages: Message[], usage: TokenUsage, currentFiles: string[]): Message[];
-	getUtilization(): BudgetUtilization;
-	getArchive(): ContextArchive;
 }
 
 // ─── Tool Types ───────────────────────────────────────────────────────────────

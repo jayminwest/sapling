@@ -7,18 +7,13 @@
  *
  * ## Modes
  * - **baseline**: no context management — accumulate all messages each turn
- * - **managed**: SaplingContextManager (v0) runs between every turn
  * - **v1**: SaplingPipelineV1 runs between every turn
  *
- * ## Success Criteria (from MVP spec step 7)
+ * ## Success Criteria
  * 1. Token usage 30–50% less than baseline on long tasks
- * 2. Agent never hits context limit unexpectedly (managed total < window)
- * 3. Coherence doesn't degrade: archive is non-empty after pruning
+ * 2. Agent never hits context limit unexpectedly (v1 total < window)
  */
 
-import { renderArchive } from "../context/archive.ts";
-import { SaplingContextManager } from "../context/manager.ts";
-import { estimateTokens } from "../context/measure.ts";
 import { extractTurnHint, SaplingPipelineV1 } from "../context/v1/pipeline.ts";
 import type { BudgetUtilization, ContextBudget, Message, TokenUsage } from "../types.ts";
 import type { BenchmarkScenario } from "./scenarios.ts";
@@ -57,48 +52,25 @@ export interface BenchmarkResult {
 	/** Average input tokens per turn without context management. */
 	baselineAvgInputTokens: number;
 
-	// ── Managed (v0 — with context management) ────────────────────────────────
-	/** Sum of estimated input tokens across all turns with context management. */
-	managedTotalInputTokens: number;
-	/** Average input tokens per turn with context management. */
-	managedAvgInputTokens: number;
+	// ── V1 pipeline ──────────────────────────────────────────────────────────
+	v1: V1BenchmarkMetrics;
 
 	// ── Reduction ─────────────────────────────────────────────────────────────
-	/** Fraction of baseline tokens saved: (baseline - managed) / baseline. 0 if baseline == 0. */
+	/** Fraction of baseline tokens saved: (baseline - v1) / baseline. 0 if baseline == 0. */
 	reductionFraction: number;
 	/** reductionFraction as a percentage (0–100). */
 	reductionPct: number;
 
-	// ── Context Limit ─────────────────────────────────────────────────────────
-	/** Turns where managed context exceeded the window budget. */
-	contextLimitHits: number;
-	/** Whether any turn exceeded the budget. */
-	hitContextLimit: boolean;
-
-	// ── Archive (coherence proxy) ──────────────────────────────────────────────
-	/** Token count of the archive at the end of the run. */
-	archiveFinalTokens: number;
-	/** Whether the archive accumulated any content (coherence proxy). */
-	archiveHasContent: boolean;
-
 	// ── Per-turn detail ───────────────────────────────────────────────────────
 	baselineTurns: TurnMetrics[];
-	managedTurns: TurnMetrics[];
 
 	// ── Pass / Fail ───────────────────────────────────────────────────────────
 	/** Expected minimum reduction fraction for this scenario. */
 	expectedReductionMin: number;
 	/** Whether reduction met or exceeded the minimum expectation. */
 	passesReduction: boolean;
-	/** Whether no context limit was exceeded. */
-	passesNoLimitHit: boolean;
-	/** Whether coherence proxy passed (archive has content for scenarios > 10 turns). */
-	passesCoherence: boolean;
 	/** All criteria pass. */
 	passes: boolean;
-
-	// ── V1 metrics (populated only when v1 run included) ──────────────────────
-	v1?: V1BenchmarkMetrics;
 }
 
 /** v1 pipeline-specific metrics appended to BenchmarkResult. */
@@ -143,18 +115,16 @@ export interface HarnessOptions {
 	 * System prompt text (used for token accounting). Defaults to a short placeholder.
 	 */
 	systemPrompt?: string;
-	/**
-	 * If true, run only the managed pass (skip baseline). Useful when you only
-	 * need the managed metrics.
-	 */
-	managedOnly?: boolean;
-	/**
-	 * If true, also run the v1 pipeline and include v1 metrics in the result.
-	 */
-	includeV1?: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Estimate token count for a string using the 4-chars ≈ 1 token heuristic.
+ */
+function estimateTokens(text: string): number {
+	return Math.ceil(text.length / 4);
+}
 
 /**
  * Estimate tokens for a single block, handling all block types including tool_result.
@@ -199,26 +169,6 @@ function estimateContextTokens(messages: Message[]): number {
  */
 function dummyUsage(inputTokens: number): TokenUsage {
 	return { inputTokens, outputTokens: 50 };
-}
-
-/**
- * Extract file paths from a message array for context manager currentFiles hints.
- * Looks at the last 5 messages for tool_use blocks with file paths.
- */
-function extractCurrentFiles(messages: Message[]): string[] {
-	const files = new Set<string>();
-	const recent = messages.slice(-5);
-	for (const msg of recent) {
-		if (typeof msg.content === "string") continue;
-		for (const block of msg.content) {
-			if (block.type === "tool_use") {
-				const { input } = block;
-				if (typeof input.file_path === "string") files.add(input.file_path);
-				if (typeof input.path === "string") files.add(input.path);
-			}
-		}
-	}
-	return Array.from(files);
 }
 
 /**
@@ -293,95 +243,6 @@ function runBaseline(
 	}
 
 	return { total: totalInputTokens, turns: turnMetrics };
-}
-
-// ─── Managed Runner (v0) ──────────────────────────────────────────────────────
-
-/**
- * Run the managed pass: apply SaplingContextManager between every turn.
- *
- * The context manager prunes, archives, and reshapes the message array.
- * Returns per-turn input token counts, context limit hits, and the final archive.
- */
-function runManaged(
-	taskPrompt: string,
-	scenarioMessages: Message[],
-	budget: ContextBudget,
-	systemPrompt: string,
-): {
-	total: number;
-	turns: TurnMetrics[];
-	contextLimitHits: number;
-	archiveFinalTokens: number;
-} {
-	const systemTokens = estimateTokens(systemPrompt);
-	const manager = new SaplingContextManager({ budget, systemPromptTokens: systemTokens });
-
-	const turnMetrics: TurnMetrics[] = [];
-	let totalInputTokens = 0;
-	let contextLimitHits = 0;
-
-	// Seed with task prompt
-	let messages: Message[] = [{ role: "user", content: taskPrompt }];
-
-	let turn = 0;
-	let i = 0;
-
-	while (i < scenarioMessages.length) {
-		const msg = scenarioMessages[i];
-		if (!msg) break;
-
-		if (msg.role === "assistant") {
-			turn++;
-			// Measure input tokens (current managed context)
-			const inputTokens = estimateContextTokens(messages);
-			totalInputTokens += inputTokens;
-
-			// Check if we exceeded the budget
-			if (inputTokens > budget.windowSize) {
-				contextLimitHits++;
-			}
-
-			// Append assistant message
-			messages.push(msg);
-
-			// If this is the final turn (no following user result), run manager and stop
-			const next = scenarioMessages[i + 1];
-			if (!next || next.role === "assistant") {
-				// Final assistant message: run manager to finalize archive
-				const currentFiles = extractCurrentFiles(messages);
-				messages = manager.process(messages, dummyUsage(inputTokens), currentFiles);
-
-				const util = manager.getUtilization();
-				turnMetrics.push({ turn, inputTokens, messageCount: messages.length, utilization: util });
-				i++;
-				continue;
-			}
-
-			// Append the following user result message
-			i++;
-			const userMsg = scenarioMessages[i];
-			if (userMsg) {
-				messages.push(userMsg);
-			}
-			i++;
-
-			// Run context manager
-			const currentFiles = extractCurrentFiles(messages);
-			messages = manager.process(messages, dummyUsage(inputTokens), currentFiles);
-
-			const util = manager.getUtilization();
-			turnMetrics.push({ turn, inputTokens, messageCount: messages.length, utilization: util });
-		} else {
-			// Standalone user message (e.g., "[Acknowledged]") — just append
-			messages.push(msg);
-			i++;
-		}
-	}
-
-	const archiveFinalTokens = estimateTokens(renderArchive(manager.getArchive()));
-
-	return { total: totalInputTokens, turns: turnMetrics, contextLimitHits, archiveFinalTokens };
 }
 
 // ─── V1 Runner ────────────────────────────────────────────────────────────────
@@ -502,7 +363,7 @@ function runV1(
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Run a benchmark scenario through baseline and managed modes and return a result report.
+ * Run a benchmark scenario through baseline and v1 pipeline modes and return a result report.
  *
  * @param scenario - The benchmark scenario to run
  * @param options  - Harness configuration (budget override, system prompt, etc.)
@@ -525,46 +386,33 @@ export function runBenchmark(
 		options.systemPrompt ?? "You are a coding agent. Use the available tools to complete the task.";
 
 	// Run baseline
-	const baseline = options.managedOnly
-		? { total: 0, turns: [] as TurnMetrics[] }
-		: runBaseline(scenario.taskPrompt, scenario.messages, budget);
+	const baseline = runBaseline(scenario.taskPrompt, scenario.messages, budget);
 
-	// Run managed (v0)
-	const managed = runManaged(scenario.taskPrompt, scenario.messages, budget, systemPrompt);
-
-	// Run v1 if requested
-	let v1Metrics: V1BenchmarkMetrics | undefined;
-	if (options.includeV1) {
-		const raw = runV1(scenario.taskPrompt, scenario.messages, budget.windowSize, systemPrompt);
-		// Compute reduction against baseline
-		const baseTotal = baseline.total;
-		const v1ReductionFraction =
-			baseTotal > 0 ? Math.max(0, (baseTotal - raw.totalInputTokens) / baseTotal) : 0;
-		v1Metrics = {
-			...raw,
-			reductionFraction: v1ReductionFraction,
-			reductionPct: Math.round(v1ReductionFraction * 100 * 10) / 10,
-		};
-	}
+	// Run v1 pipeline
+	const raw = runV1(scenario.taskPrompt, scenario.messages, budget.windowSize, systemPrompt);
+	const baseTotal = baseline.total;
+	const v1ReductionFraction =
+		baseTotal > 0 ? Math.max(0, (baseTotal - raw.totalInputTokens) / baseTotal) : 0;
+	const v1Metrics: V1BenchmarkMetrics = {
+		...raw,
+		reductionFraction: v1ReductionFraction,
+		reductionPct: Math.round(v1ReductionFraction * 100 * 10) / 10,
+	};
 
 	const baselineTotalInputTokens = baseline.total;
-	const managedTotalInputTokens = managed.total;
-
 	const baselineTurns = baseline.turns.length;
-	const managedTurns = managed.turns.length;
 
-	const turns = managedTurns > 0 ? managedTurns : baselineTurns;
+	const turns = v1Metrics.turns.length > 0 ? v1Metrics.turns.length : baselineTurns;
 
 	const reductionFraction =
 		baselineTotalInputTokens > 0
-			? Math.max(0, (baselineTotalInputTokens - managedTotalInputTokens) / baselineTotalInputTokens)
+			? Math.max(
+					0,
+					(baselineTotalInputTokens - v1Metrics.totalInputTokens) / baselineTotalInputTokens,
+				)
 			: 0;
 
-	const archiveHasContent = managed.archiveFinalTokens > 0;
 	const passesReduction = reductionFraction >= scenario.expectedReductionMin;
-	const passesNoLimitHit = managed.contextLimitHits === 0;
-	// Coherence proxy: for scenarios with >10 turns, archive should have content
-	const passesCoherence = turns <= 10 || archiveHasContent;
 
 	return {
 		scenarioId: scenario.id,
@@ -575,29 +423,16 @@ export function runBenchmark(
 		baselineAvgInputTokens:
 			baselineTurns > 0 ? Math.round(baselineTotalInputTokens / baselineTurns) : 0,
 
-		managedTotalInputTokens,
-		managedAvgInputTokens:
-			managedTurns > 0 ? Math.round(managedTotalInputTokens / managedTurns) : 0,
+		v1: v1Metrics,
 
 		reductionFraction,
 		reductionPct: Math.round(reductionFraction * 100 * 10) / 10,
 
-		contextLimitHits: managed.contextLimitHits,
-		hitContextLimit: managed.contextLimitHits > 0,
-
-		archiveFinalTokens: managed.archiveFinalTokens,
-		archiveHasContent,
-
 		baselineTurns: baseline.turns,
-		managedTurns: managed.turns,
 
 		expectedReductionMin: scenario.expectedReductionMin,
 		passesReduction,
-		passesNoLimitHit,
-		passesCoherence,
-		passes: passesReduction && passesNoLimitHit && passesCoherence,
-
-		...(v1Metrics !== undefined ? { v1: v1Metrics } : {}),
+		passes: passesReduction,
 	};
 }
 
@@ -616,23 +451,16 @@ export function runAllBenchmarks(
  */
 export function formatResult(result: BenchmarkResult): string {
 	const status = result.passes ? "PASS" : "FAIL";
+	const v1 = result.v1;
 	const lines = [
 		`[${status}] ${result.scenarioName}`,
 		`  turns: ${result.turns}`,
 		`  baseline total input tokens: ${result.baselineTotalInputTokens.toLocaleString()} (avg ${result.baselineAvgInputTokens.toLocaleString()}/turn)`,
-		`  managed  total input tokens: ${result.managedTotalInputTokens.toLocaleString()} (avg ${result.managedAvgInputTokens.toLocaleString()}/turn)`,
+		`  v1 total tokens: ${v1.totalInputTokens.toLocaleString()} (avg ${v1.avgInputTokens.toLocaleString()}/turn)`,
 		`  reduction: ${result.reductionPct}% (expected ≥${Math.round(result.expectedReductionMin * 100)}%)  ${result.passesReduction ? "✓" : "✗"}`,
-		`  context limit hits: ${result.contextLimitHits}  ${result.passesNoLimitHit ? "✓" : "✗"}`,
-		`  archive tokens: ${result.archiveFinalTokens}  ${result.passesCoherence ? "✓" : "✗"}`,
+		`  context limit hits: ${v1.contextLimitHits}`,
+		`  v1 peak util: ${(v1.peakUtilization * 100).toFixed(1)}%  mean util: ${(v1.meanUtilization * 100).toFixed(1)}%`,
+		`  v1 ops: ${v1.operationCount} total, ${v1.compactedCount} compacted, ${v1.archivedCount} archived (compaction ratio: ${(v1.compactionRatio * 100).toFixed(0)}%)`,
 	];
-	if (result.v1) {
-		const v1 = result.v1;
-		lines.push(
-			`  v1 total tokens: ${v1.totalInputTokens.toLocaleString()} (avg ${v1.avgInputTokens.toLocaleString()}/turn)`,
-			`  v1 reduction: ${v1.reductionPct}%`,
-			`  v1 peak util: ${(v1.peakUtilization * 100).toFixed(1)}%  mean util: ${(v1.meanUtilization * 100).toFixed(1)}%`,
-			`  v1 ops: ${v1.operationCount} total, ${v1.compactedCount} compacted, ${v1.archivedCount} archived (compaction ratio: ${(v1.compactionRatio * 100).toFixed(0)}%)`,
-		);
-	}
 	return lines.join("\n");
 }

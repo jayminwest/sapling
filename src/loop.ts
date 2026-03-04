@@ -12,7 +12,6 @@ import { ClientError } from "./errors.ts";
 import { logger } from "./logging/logger.ts";
 import type {
 	ContentBlock,
-	ContextManager,
 	LlmClient,
 	LlmRequest,
 	LlmResponse,
@@ -110,24 +109,6 @@ function extractToolCalls(content: ContentBlock[]): Extract<ContentBlock, { type
  * Scan the last N messages for file paths referenced in tool inputs.
  * Used to inform the context manager's relevance scoring.
  */
-function extractCurrentFiles(messages: LoopMessage[], lookback = 5): string[] {
-	const files = new Set<string>();
-	const recent = messages.slice(-lookback);
-
-	for (const msg of recent) {
-		if (typeof msg.content === "string") continue;
-		for (const block of msg.content) {
-			if (block.type === "tool_use") {
-				const { input } = block;
-				if (typeof input.file_path === "string") files.add(input.file_path);
-				if (typeof input.path === "string") files.add(input.path);
-			}
-		}
-	}
-
-	return [...files];
-}
-
 // ─── Lifecycle Hook Helpers ───────────────────────────────────────────────────
 
 /**
@@ -151,15 +132,13 @@ async function fireSessionEnd(argv: string[] | undefined): Promise<void> {
  * - The max turn limit is reached
  * - An unrecoverable error occurs
  *
- * @param client         - LLM backend (CC subprocess or Anthropic SDK)
- * @param tools          - Registry of available tools
- * @param contextManager - Inter-turn context pipeline
- * @param options        - Loop configuration
+ * @param client  - LLM backend (CC subprocess or Anthropic SDK)
+ * @param tools   - Registry of available tools
+ * @param options - Loop configuration
  */
 export async function runLoop(
 	client: LlmClient,
 	tools: ToolRegistry,
-	contextManager: ContextManager,
 	options: LoopOptions,
 ): Promise<LoopResult> {
 	const maxTurns = options.maxTurns ?? 200;
@@ -174,10 +153,10 @@ export async function runLoop(
 
 	// v1 pipeline — created once, stateful across turns
 	// Base system prompt is kept immutable; pipeline returns a composed version each turn
-	const pipelineV1 =
-		options.contextPipeline === "v1"
-			? new SaplingPipelineV1({ windowSize: options.contextWindowSize ?? 200_000, verbose: false })
-			: undefined;
+	const pipeline = new SaplingPipelineV1({
+		windowSize: options.contextWindowSize ?? 200_000,
+		verbose: false,
+	});
 	// Track the pipeline-managed system prompt (updated each turn by the v1 pipeline)
 	let currentSystemPrompt = options.systemPrompt;
 
@@ -269,17 +248,8 @@ export async function runLoop(
 				inputTokens: totalInputTokens,
 				outputTokens: totalOutputTokens,
 			});
-			// Let context manager / pipeline finalize state
-			let contextUtilization = 0;
-			if (pipelineV1) {
-				// v1: no further pipeline processing needed at task_complete; use last state
-				const state = pipelineV1.getState();
-				contextUtilization = state?.utilization ?? 0;
-			} else {
-				contextManager.process(messages as Message[], response.usage, []);
-				const util = contextManager.getUtilization();
-				contextUtilization = util.total.budget > 0 ? util.total.used / util.total.budget : 0;
-			}
+			// Use last pipeline state for utilization
+			const contextUtilization = pipeline.getState()?.utilization ?? 0;
 			options.eventEmitter?.emit({
 				type: "turn_end",
 				turn: totalTurns,
@@ -426,37 +396,24 @@ export async function runLoop(
 			}
 		}
 
-		// ── Step 8: Run context manager / v1 pipeline ────────────────────────
-		let contextUtilization = 0;
+		// ── Step 8: Run v1 pipeline ─────────────────────────────────────────────
+		const turnHint = extractTurnHint(messages as Message[], totalTurns);
+		const pipelineResult = pipeline.process({
+			messages: messages as Message[],
+			systemPrompt: options.systemPrompt, // always pass the base prompt
+			turnHint,
+			usage: response.usage,
+		});
+		messages.splice(0, messages.length, ...(pipelineResult.messages as LoopMessage[]));
+		currentSystemPrompt = pipelineResult.systemPrompt;
+		const contextUtilization = pipelineResult.state.utilization;
 
-		if (pipelineV1) {
-			// v1: extract turn hint, run pipeline, update messages and system prompt
-			const turnHint = extractTurnHint(messages as Message[], totalTurns);
-			const pipelineResult = pipelineV1.process({
-				messages: messages as Message[],
-				systemPrompt: options.systemPrompt, // always pass the base prompt
-				turnHint,
-				usage: response.usage,
-			});
-			messages.splice(0, messages.length, ...(pipelineResult.messages as LoopMessage[]));
-			currentSystemPrompt = pipelineResult.systemPrompt;
-			contextUtilization = pipelineResult.state.utilization;
-
-			// Update RPC server with pipeline state for getState responses
-			const rpcState = pipelineV1.getRpcState() ?? undefined;
-			if (options.rpcServer && "setPipelineState" in options.rpcServer) {
-				(options.rpcServer as { setPipelineState: (s: typeof rpcState) => void }).setPipelineState(
-					rpcState,
-				);
-			}
-		} else {
-			// v0: legacy context manager
-			const currentFiles = extractCurrentFiles(messages);
-			const managed = contextManager.process(messages as Message[], response.usage, currentFiles);
-			messages.splice(0, messages.length, ...(managed as LoopMessage[]));
-			const turnUtil = contextManager.getUtilization();
-			contextUtilization =
-				turnUtil.total.budget > 0 ? turnUtil.total.used / turnUtil.total.budget : 0;
+		// Update RPC server with pipeline state for getState responses
+		const rpcState = pipeline.getRpcState() ?? undefined;
+		if (options.rpcServer && "setPipelineState" in options.rpcServer) {
+			(options.rpcServer as { setPipelineState: (s: typeof rpcState) => void }).setPipelineState(
+				rpcState,
+			);
 		}
 
 		options.setState?.({ turn: totalTurns, phase: "idle" });

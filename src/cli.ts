@@ -10,7 +10,6 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { AnthropicClient, CcClient, PiClient } from "./client/index.ts";
 import { loadGuardConfig } from "./config.ts";
-import { createContextManager } from "./context/manager.ts";
 import { ConfigError } from "./errors.ts";
 import { EventEmitter } from "./hooks/events.ts";
 import { HookManager } from "./hooks/manager.ts";
@@ -110,10 +109,6 @@ export async function runCommand(
 
 	const client = createClient(config);
 	const tools = createDefaultRegistry();
-	const contextManager = createContextManager({
-		budget: config.contextBudget,
-		verbose: config.verbose,
-	});
 
 	const eventEmitter = new EventEmitter(config.json);
 
@@ -132,9 +127,8 @@ export async function runCommand(
 		eventEmitter,
 		rpcServer,
 		eventConfig,
-		contextPipeline: opts.contextPipeline,
 		contextWindowSize: config.contextWindow,
 	};
 
-	return runLoop(client, tools, contextManager, loopOptions);
+	return runLoop(client, tools, loopOptions);
 }
