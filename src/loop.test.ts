@@ -686,6 +686,48 @@ describe("runLoop", () => {
 		expect(hasSteer).toBe(true);
 	});
 
+	it("drains all queued RPC requests in a single turn", async () => {
+		const queue = [
+			{ method: "steer", params: { content: "focus on tests" } },
+			{ method: "steer", params: { content: "keep it simple" } },
+		];
+		const rpcServer: IRpcServer = {
+			dequeue: () => queue.shift(),
+			isAbortRequested: () => false,
+		};
+
+		const responses: LlmResponse[] = [
+			mockToolUseResponse("echo", { message: "hello" }, "tc1"),
+			mockTextResponse("done with all steers"),
+		];
+		const client = createMockClient(responses);
+		const registry = createRegistry([createEchoTool()]);
+		const opts = defaultOptions(testDir, { rpcServer });
+
+		const result = await runLoop(client, registry, ctx, opts);
+
+		expect(result.exitReason).toBe("task_complete");
+		expect(result.totalTurns).toBe(2);
+
+		// The second LLM call should contain both steer messages
+		const callsAccessor = client as unknown as { calls: { messages: Message[] }[] };
+		const secondCallMessages = callsAccessor.calls[1]?.messages;
+		expect(secondCallMessages).toBeDefined();
+
+		const steerTexts = secondCallMessages
+			?.flatMap((m) => {
+				if (m.role !== "user" || typeof m.content === "string") return [];
+				return m.content
+					.filter((b) => b.type === "text")
+					.map((b) => (b as { type: "text"; text: string }).text);
+			})
+			.filter((t) => t.includes("[STEER]"));
+
+		expect(steerTexts).toHaveLength(2);
+		expect(steerTexts?.[0]).toContain("focus on tests");
+		expect(steerTexts?.[1]).toContain("keep it simple");
+	});
+
 	it("loop works normally without rpcServer", async () => {
 		const responses: LlmResponse[] = [
 			mockToolUseResponse("echo", { message: "ok" }, "tc1"),

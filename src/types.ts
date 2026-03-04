@@ -96,6 +96,8 @@ export interface LoopOptions {
 	rpcServer?: IRpcServer;
 	/** Optional lifecycle event config from guards.json for orchestrator hooks. */
 	eventConfig?: EventConfig;
+	/** Optional callback invoked at turn boundaries to report loop state for RPC getState. */
+	setState?: (state: { turn: number; phase: "calling_llm" | "executing_tools" | "idle" }) => void;
 }
 
 export interface LoopResult {

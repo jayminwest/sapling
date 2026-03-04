@@ -178,7 +178,7 @@ export async function runLoop(
 	});
 
 	options.eventEmitter?.emit({
-		type: "started",
+		type: "ready",
 		model: options.model,
 		maxTurns,
 		tools: toolDefs.map((t) => t.name),
@@ -189,7 +189,7 @@ export async function runLoop(
 		if (options.rpcServer?.isAbortRequested()) {
 			logger.info("Agent loop aborted by RPC request");
 			options.eventEmitter?.emit({
-				type: "run_complete",
+				type: "result",
 				exitReason: "aborted",
 				totalTurns,
 				totalInputTokens,
@@ -210,6 +210,8 @@ export async function runLoop(
 			model: options.model,
 		};
 
+		options.setState?.({ turn: totalTurns, phase: "calling_llm" });
+
 		// ── Step 2: Call LLM with retry ───────────────────────────────────────
 		let response: LlmResponse;
 		try {
@@ -218,7 +220,7 @@ export async function runLoop(
 			const message = err instanceof Error ? err.message : String(err);
 			logger.error(`Agent loop aborted: ${message}`);
 			options.eventEmitter?.emit({
-				type: "run_complete",
+				type: "result",
 				exitReason: "error",
 				totalTurns,
 				totalInputTokens,
@@ -266,7 +268,7 @@ export async function runLoop(
 				contextUtilization,
 			});
 			options.eventEmitter?.emit({
-				type: "run_complete",
+				type: "result",
 				exitReason: "task_complete",
 				totalTurns,
 				totalInputTokens,
@@ -292,11 +294,13 @@ export async function runLoop(
 			Bun.spawn(options.eventConfig.onToolStart, { stdout: "ignore", stderr: "ignore" });
 		}
 
+		options.setState?.({ turn: totalTurns, phase: "executing_tools" });
+
 		const toolResultBlocks: ToolResultBlock[] = await Promise.all(
 			toolCalls.map(async (call): Promise<ToolResultBlock> => {
-				// Emit tool_call event before dispatching
+				// Emit tool_start event before dispatching
 				options.eventEmitter?.emit({
-					type: "tool_call",
+					type: "tool_start",
 					turn: totalTurns,
 					toolName: call.name,
 					toolCallId: call.id,
@@ -352,9 +356,9 @@ export async function runLoop(
 					}
 				}
 
-				// Emit tool_result event after completion
+				// Emit tool_end event after completion
 				options.eventEmitter?.emit({
-					type: "tool_result",
+					type: "tool_end",
 					turn: totalTurns,
 					toolName: call.name,
 					toolCallId: call.id,
@@ -373,20 +377,25 @@ export async function runLoop(
 		// ── Step 7: Append tool results as user message ───────────────────────
 		messages.push({ role: "user", content: toolResultBlocks });
 
-		// ── Step 7b: Inject queued RPC steer/followUp into tool results ───────
-		// Per decision mx-195088: steered content appended to current turn's
-		// tool results (same user message), not as a separate user message.
+		// ── Step 7b: Inject queued RPC steer/followUp requests ───────────────
+		// Per decision mx-195088: steer appended to current turn's tool results.
+		// followUp injected as a standalone user message.
 		if (options.rpcServer) {
-			const rpcReq = options.rpcServer.dequeue();
-			if (rpcReq) {
-				const lastMsg = messages[messages.length - 1];
-				if (lastMsg?.role === "user" && Array.isArray(lastMsg.content)) {
-					(lastMsg.content as Array<ContentBlock | ToolResultBlock>).push({
-						type: "text",
-						text: `[${rpcReq.method.toUpperCase()}] ${rpcReq.params.content}`,
-					});
-					logger.debug(`RPC ${rpcReq.method} injected into turn ${totalTurns} tool results`);
+			let rpcReq = options.rpcServer.dequeue();
+			while (rpcReq) {
+				if (rpcReq.method === "steer") {
+					const lastMsg = messages[messages.length - 1];
+					if (lastMsg?.role === "user" && Array.isArray(lastMsg.content)) {
+						(lastMsg.content as Array<ContentBlock | ToolResultBlock>).push({
+							type: "text",
+							text: `[STEER] ${rpcReq.params.content}`,
+						});
+					}
+				} else if (rpcReq.method === "followUp") {
+					messages.push({ role: "user", content: `[FOLLOWUP] ${rpcReq.params.content}` });
 				}
+				logger.debug(`RPC ${rpcReq.method} injected into turn ${totalTurns}`);
+				rpcReq = options.rpcServer.dequeue();
 			}
 		}
 
@@ -395,6 +404,8 @@ export async function runLoop(
 		const managed = contextManager.process(messages as Message[], response.usage, currentFiles);
 		// Replace the message array in-place with the managed version
 		messages.splice(0, messages.length, ...(managed as LoopMessage[]));
+
+		options.setState?.({ turn: totalTurns, phase: "idle" });
 
 		// Emit turn_end with cumulative token counts and context utilization ratio
 		const turnUtil = contextManager.getUtilization();
@@ -414,7 +425,7 @@ export async function runLoop(
 		outputTokens: totalOutputTokens,
 	});
 	options.eventEmitter?.emit({
-		type: "run_complete",
+		type: "result",
 		exitReason: "max_turns",
 		totalTurns,
 		totalInputTokens,
