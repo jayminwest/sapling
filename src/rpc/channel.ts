@@ -8,7 +8,7 @@
 
 import type { FollowUpRequest, RpcRequest, SteerRequest } from "./types.ts";
 
-/** Steer/followUp requests that can appear in the queue (abort sets a flag, never queued). */
+/** Steer/followUp requests that can appear in the queue (abort sets a flag, getState is handled immediately, never queued). */
 type QueuableRequest = SteerRequest | FollowUpRequest;
 
 // ─── Parse Helpers ────────────────────────────────────────────────────────────
@@ -22,6 +22,9 @@ function isValidRpcRequest(v: unknown): v is RpcRequest {
 	const obj = v as Record<string, unknown>;
 	const method = obj.method;
 	if (method === "abort") return true;
+	if (method === "getState") {
+		return typeof obj.id === "number" || typeof obj.id === "string";
+	}
 	if (method === "steer" || method === "followUp") {
 		return (
 			typeof obj.params === "object" &&
@@ -101,9 +104,10 @@ export class RpcChannel {
 		if (result.ok) {
 			if (result.request.method === "abort") {
 				this.abortRequested = true;
-			} else {
+			} else if (result.request.method === "steer" || result.request.method === "followUp") {
 				this.queue.push(result.request);
 			}
+			// getState is not queued — handled immediately by the server callback
 		}
 		this.onParsed(result);
 	}

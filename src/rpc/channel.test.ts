@@ -93,6 +93,30 @@ describe("parseLine", () => {
 		const result = parseLine(JSON.stringify([1, 2, 3]));
 		expect(result.ok).toBe(false);
 	});
+
+	it("parses a valid getState request with numeric id", () => {
+		const result = parseLine(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getState" }));
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.request.method).toBe("getState");
+			if (result.request.method === "getState") {
+				expect(result.request.id).toBe(1);
+			}
+		}
+	});
+
+	it("parses a valid getState request with string id", () => {
+		const result = parseLine(JSON.stringify({ id: "req-42", method: "getState" }));
+		expect(result.ok).toBe(true);
+		if (result.ok && result.request.method === "getState") {
+			expect(result.request.id).toBe("req-42");
+		}
+	});
+
+	it("rejects getState without id", () => {
+		const result = parseLine(JSON.stringify({ method: "getState" }));
+		expect(result.ok).toBe(false);
+	});
 });
 
 // ─── RpcChannel tests ─────────────────────────────────────────────────────────
@@ -207,5 +231,26 @@ describe("RpcChannel", () => {
 		await channel.drained;
 
 		expect(channel.isAbortRequested()).toBe(false);
+	});
+
+	it("getState is not queued — dequeue returns undefined", async () => {
+		const stream = makeStream([JSON.stringify({ id: 1, method: "getState" })]);
+		const channel = new RpcChannel(stream, () => {});
+		await channel.drained;
+
+		expect(channel.dequeue()).toBeUndefined();
+	});
+
+	it("calls onParsed for getState request", async () => {
+		const called: ParseResult[] = [];
+		const stream = makeStream([JSON.stringify({ id: 2, method: "getState" })]);
+		const channel = new RpcChannel(stream, (r) => called.push(r));
+		await channel.drained;
+
+		expect(called).toHaveLength(1);
+		expect(called[0]?.ok).toBe(true);
+		if (called[0]?.ok && called[0].request.method === "getState") {
+			expect(called[0].request.id).toBe(2);
+		}
 	});
 });

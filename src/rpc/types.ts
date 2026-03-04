@@ -19,6 +19,18 @@ export interface AbortRequest {
 	method: "abort";
 }
 
-export type RpcRequest = SteerRequest | FollowUpRequest | AbortRequest;
+export interface GetStateRequest {
+	id: number | string;
+	method: "getState";
+}
+
+export type RpcRequest = SteerRequest | FollowUpRequest | AbortRequest | GetStateRequest;
 
 export type RpcAckStatus = "queued" | "accepted" | "rejected";
+
+export type AgentStatus = "idle" | "working" | "error";
+
+export interface AgentStateSnapshot {
+	status: AgentStatus;
+	currentTool?: string;
+}

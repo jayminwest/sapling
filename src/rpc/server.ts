@@ -5,20 +5,33 @@
  * Abort requests are acknowledged immediately (status: "accepted").
  * Steer/followUp requests are acknowledged as queued (status: "queued")
  * on receipt; the loop dequeues and injects them between turns.
+ * GetState requests are answered synchronously with the current agent state.
  * Invalid requests are acknowledged as rejected (status: "rejected").
+ *
+ * Agent state is tracked via setWorking/setIdle/setError calls from the loop.
+ * Defaults to "idle".
  */
 
 import type { EventEmitter } from "../hooks/events.ts";
 import { RpcChannel } from "./channel.ts";
-import type { FollowUpRequest, SteerRequest } from "./types.ts";
+import type { AgentStateSnapshot, AgentStatus, FollowUpRequest, SteerRequest } from "./types.ts";
+
+/** Writer function type — injected for testability, defaults to process.stdout.write. */
+type LineWriter = (line: string) => void;
 
 export class RpcServer {
 	private readonly channel: RpcChannel;
+	private agentStatus: AgentStatus = "idle";
+	private agentCurrentTool: string | undefined;
 
 	/** Resolves when the input stream is exhausted. Useful in tests. */
 	readonly drained: Promise<void>;
 
-	constructor(stream: ReadableStream<Uint8Array>, eventEmitter: EventEmitter) {
+	constructor(
+		stream: ReadableStream<Uint8Array>,
+		eventEmitter: EventEmitter,
+		writer: LineWriter = (line) => process.stdout.write(line),
+	) {
 		this.channel = new RpcChannel(stream, (result) => {
 			if (result.ok) {
 				if (result.request.method === "abort") {
@@ -28,6 +41,15 @@ export class RpcServer {
 						method: "abort",
 						status: "accepted",
 					});
+				} else if (result.request.method === "getState") {
+					// Respond synchronously with current agent state
+					const snap = this.getSnapshot();
+					const response: Record<string, unknown> = {
+						jsonrpc: "2.0",
+						id: result.request.id,
+						result: snap,
+					};
+					writer(`${JSON.stringify(response)}\n`);
 				} else {
 					// Steer/followUp queued — will be injected at next turn boundary
 					eventEmitter.emit({
@@ -47,6 +69,37 @@ export class RpcServer {
 		});
 		this.drained = this.channel.drained;
 	}
+
+	// ─── State Tracking ────────────────────────────────────────────────────────
+
+	/** Notify that the agent is now executing tool(s). Call before tool dispatch. */
+	setWorking(toolName: string): void {
+		this.agentStatus = "working";
+		this.agentCurrentTool = toolName;
+	}
+
+	/** Notify that tool execution has finished and the agent is between turns. */
+	setIdle(): void {
+		this.agentStatus = "idle";
+		this.agentCurrentTool = undefined;
+	}
+
+	/** Notify that the last LLM call failed with an unrecoverable error. */
+	setError(): void {
+		this.agentStatus = "error";
+		this.agentCurrentTool = undefined;
+	}
+
+	/** Return a snapshot of the current agent state. */
+	private getSnapshot(): AgentStateSnapshot {
+		const snap: AgentStateSnapshot = { status: this.agentStatus };
+		if (this.agentCurrentTool !== undefined) {
+			snap.currentTool = this.agentCurrentTool;
+		}
+		return snap;
+	}
+
+	// ─── Loop API ──────────────────────────────────────────────────────────────
 
 	/** Dequeue the next steer/followUp request. Returns undefined if empty. */
 	dequeue(): SteerRequest | FollowUpRequest | undefined {
