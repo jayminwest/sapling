@@ -106,9 +106,23 @@ function extractToolCalls(content: ContentBlock[]): Extract<ContentBlock, { type
 }
 
 /**
- * Scan the last N messages for file paths referenced in tool inputs.
- * Used to inform the context manager's relevance scoring.
+ * Extract file paths modified by a tool call, for inclusion in tool_end events.
+ * - write/edit: extracts file_path from input args
+ * - bash: returns empty array (files cannot be reliably inferred from command)
+ * - other tools: returns undefined (field omitted from event)
  */
+function extractFilesModified(
+	toolName: string,
+	input: Record<string, unknown>,
+): string[] | undefined {
+	if (toolName === "write" || toolName === "edit") {
+		const fp = input.file_path;
+		return typeof fp === "string" ? [fp] : [];
+	}
+	if (toolName === "bash") return [];
+	return undefined;
+}
+
 // ─── Lifecycle Hook Helpers ───────────────────────────────────────────────────
 
 /**
@@ -147,6 +161,8 @@ export async function runLoop(
 	let totalOutputTokens = 0;
 	let totalCacheReadTokens = 0;
 	let totalCacheCreationTokens = 0;
+	// Track unique files modified across all turns for progress events
+	const modifiedFiles = new Set<string>();
 
 	const toolDefs = tools.toDefinitions();
 
@@ -368,13 +384,23 @@ export async function runLoop(
 				}
 
 				// Emit tool_end event after completion
+				const filesModified = extractFilesModified(call.name, call.input);
+				if (filesModified) {
+					for (const f of filesModified) modifiedFiles.add(f);
+				}
+				const isError = toolResult.is_error ?? false;
+				const errorMessage = isError ? toolResult.content.slice(0, 200) : undefined;
+				const outputSummary = !isError ? toolResult.content.slice(0, 200) : undefined;
 				options.eventEmitter?.emit({
 					type: "tool_end",
 					turn: totalTurns,
 					toolName: call.name,
 					toolCallId: call.id,
-					success: !(toolResult.is_error ?? false),
+					success: !isError,
 					durationMs: Date.now() - toolStartTime,
+					filesModified,
+					...(errorMessage ? { errorMessage } : {}),
+					...(outputSummary ? { outputSummary } : {}),
 				});
 
 				return toolResult;
@@ -444,6 +470,19 @@ export async function runLoop(
 			model: response.model,
 			contextUtilization,
 		});
+
+		// Auto-progress: emit at every 10% milestone or every 10 turns
+		const prevMilestone = Math.floor(((totalTurns - 1) / maxTurns) * 10);
+		const currMilestone = Math.floor((totalTurns / maxTurns) * 10);
+		if (currMilestone > prevMilestone || totalTurns % 10 === 0) {
+			const percent = Math.round((totalTurns / maxTurns) * 100);
+			options.eventEmitter?.emit({
+				type: "progress",
+				percent,
+				subtask: `Turn ${totalTurns} of ${maxTurns}`,
+				filesChanged: modifiedFiles.size,
+			});
+		}
 	}
 
 	// Max turns exhausted

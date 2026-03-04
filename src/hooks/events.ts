@@ -63,8 +63,21 @@ export class EventEmitter {
 		toolCallId: string,
 		success: boolean,
 		durationMs: number,
+		filesModified?: string[],
+		errorMessage?: string,
+		outputSummary?: string,
 	): void {
-		this.emit({ type: "tool_end", turn, toolName, toolCallId, success, durationMs });
+		this.emit({
+			type: "tool_end",
+			turn,
+			toolName,
+			toolCallId,
+			success,
+			durationMs,
+			filesModified,
+			...(errorMessage ? { errorMessage } : {}),
+			...(outputSummary ? { outputSummary } : {}),
+		});
 	}
 
 	/**

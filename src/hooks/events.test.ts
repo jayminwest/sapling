@@ -143,6 +143,57 @@ describe("EventEmitter", () => {
 			expect(parsed.durationMs).toBe(5);
 		});
 
+		it("toolEnd() includes filesModified when provided", () => {
+			const emitter = new EventEmitter(true);
+			emitter.toolEnd(1, "write", "call-abc", true, 10, ["/path/to/file.ts"]);
+			const parsed = parseFirstEvent(writeSpy);
+			expect(parsed.filesModified).toEqual(["/path/to/file.ts"]);
+		});
+
+		it("toolEnd() includes empty filesModified array when provided", () => {
+			const emitter = new EventEmitter(true);
+			emitter.toolEnd(1, "bash", "call-abc", true, 10, []);
+			const parsed = parseFirstEvent(writeSpy);
+			expect(parsed.filesModified).toEqual([]);
+		});
+
+		it("toolEnd() omits filesModified when not provided", () => {
+			const emitter = new EventEmitter(true);
+			emitter.toolEnd(1, "read", "call-abc", true, 10);
+			const parsed = parseFirstEvent(writeSpy);
+			expect("filesModified" in parsed).toBe(false);
+		});
+
+		it("toolEnd() includes errorMessage when provided", () => {
+			const emitter = new EventEmitter(true);
+			emitter.toolEnd(1, "bash", "call-err", false, 5, [], "Command not found", undefined);
+			const parsed = parseFirstEvent(writeSpy);
+			expect(parsed.errorMessage).toBe("Command not found");
+			expect("outputSummary" in parsed).toBe(false);
+		});
+
+		it("toolEnd() includes outputSummary when provided", () => {
+			const emitter = new EventEmitter(true);
+			emitter.toolEnd(1, "bash", "call-ok", true, 20, [], undefined, "file1.ts\nfile2.ts");
+			const parsed = parseFirstEvent(writeSpy);
+			expect(parsed.outputSummary).toBe("file1.ts\nfile2.ts");
+			expect("errorMessage" in parsed).toBe(false);
+		});
+
+		it("toolEnd() omits errorMessage when not provided", () => {
+			const emitter = new EventEmitter(true);
+			emitter.toolEnd(1, "bash", "call-ok", true, 20);
+			const parsed = parseFirstEvent(writeSpy);
+			expect("errorMessage" in parsed).toBe(false);
+		});
+
+		it("toolEnd() omits outputSummary when not provided", () => {
+			const emitter = new EventEmitter(true);
+			emitter.toolEnd(1, "bash", "call-ok", true, 20);
+			const parsed = parseFirstEvent(writeSpy);
+			expect("outputSummary" in parsed).toBe(false);
+		});
+
 		it("turnEnd() emits correct shape with all token fields and model", () => {
 			const emitter = new EventEmitter(true);
 			emitter.turnEnd(2, 500, 100, 20, 10, "claude-sonnet-4-6", 0.45);
