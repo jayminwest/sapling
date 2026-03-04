@@ -164,9 +164,9 @@
 		"memberIssueIds": [
 			"sapling-5956"
 		],
-		"status": "active",
+		"status": "completed",
 		"createdAt": "2026-03-04T00:39:35.893Z",
-		"completedAt": null
+		"completedAt": "2026-03-04T23:35:40.851Z"
 	},
 	{
 		"id": "group-aae0c113",
@@ -250,9 +250,9 @@
 			"sapling-6b46",
 			"sapling-92e3"
 		],
-		"status": "active",
+		"status": "completed",
 		"createdAt": "2026-03-04T18:44:06.274Z",
-		"completedAt": null
+		"completedAt": "2026-03-04T23:35:41.332Z"
 	},
 	{
 		"id": "group-e1e64365",
@@ -261,9 +261,9 @@
 			"sapling-26da",
 			"sapling-a575"
 		],
-		"status": "active",
+		"status": "completed",
 		"createdAt": "2026-03-04T20:04:49.060Z",
-		"completedAt": null
+		"completedAt": "2026-03-04T23:35:41.797Z"
 	},
 	{
 		"id": "group-85760d06",
@@ -271,9 +271,9 @@
 		"memberIssueIds": [
 			"sapling-4501"
 		],
-		"status": "active",
+		"status": "completed",
 		"createdAt": "2026-03-04T20:24:14.471Z",
-		"completedAt": null
+		"completedAt": "2026-03-04T23:35:42.173Z"
 	},
 	{
 		"id": "group-d5303d12",
@@ -282,8 +282,24 @@
 			"sapling-3c11",
 			"sapling-ecc2"
 		],
-		"status": "active",
+		"status": "completed",
 		"createdAt": "2026-03-04T20:32:15.294Z",
+		"completedAt": "2026-03-04T23:35:42.709Z"
+	},
+	{
+		"id": "group-ee033b7d",
+		"name": "sapling-events-cli-guards",
+		"memberIssueIds": [
+			"sapling-3bf8",
+			"sapling-a610",
+			"sapling-693e",
+			"sapling-c91e",
+			"sapling-bed8",
+			"sapling-424d",
+			"sapling-fb98"
+		],
+		"status": "active",
+		"createdAt": "2026-03-04T23:38:55.822Z",
 		"completedAt": null
 	}
 ]
