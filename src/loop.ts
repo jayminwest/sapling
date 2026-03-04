@@ -127,6 +127,19 @@ function extractCurrentFiles(messages: LoopMessage[], lookback = 5): string[] {
 	return [...files];
 }
 
+// ─── Lifecycle Hook Helpers ───────────────────────────────────────────────────
+
+/**
+ * Await the onSessionEnd hook if configured.
+ * Must be awaited (unlike tool events) — overstory uses this for critical
+ * session bookkeeping: token metrics, state transition, and worker_done mail.
+ */
+async function fireSessionEnd(argv: string[] | undefined): Promise<void> {
+	if (!argv) return;
+	const proc = Bun.spawn(argv, { stdout: "ignore", stderr: "ignore" });
+	await proc.exited;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -182,6 +195,7 @@ export async function runLoop(
 				totalInputTokens,
 				totalOutputTokens,
 			});
+			await fireSessionEnd(options.eventConfig?.onSessionEnd);
 			return { exitReason: "aborted", totalTurns, totalInputTokens, totalOutputTokens };
 		}
 
@@ -210,6 +224,7 @@ export async function runLoop(
 				totalInputTokens,
 				totalOutputTokens,
 			});
+			await fireSessionEnd(options.eventConfig?.onSessionEnd);
 			return {
 				exitReason: "error",
 				totalTurns,
@@ -257,6 +272,7 @@ export async function runLoop(
 				totalInputTokens,
 				totalOutputTokens,
 			});
+			await fireSessionEnd(options.eventConfig?.onSessionEnd);
 			return {
 				exitReason: "task_complete",
 				totalTurns,
@@ -271,6 +287,11 @@ export async function runLoop(
 		});
 
 		// ── Step 6: Execute tools in parallel ─────────────────────────────────
+		// Fire onToolStart heartbeat — fire-and-forget (updates overstory lastActivity)
+		if (options.eventConfig?.onToolStart) {
+			Bun.spawn(options.eventConfig.onToolStart, { stdout: "ignore", stderr: "ignore" });
+		}
+
 		const toolResultBlocks: ToolResultBlock[] = await Promise.all(
 			toolCalls.map(async (call): Promise<ToolResultBlock> => {
 				// Emit tool_call event before dispatching
@@ -344,6 +365,11 @@ export async function runLoop(
 			}),
 		);
 
+		// Fire onToolEnd heartbeat — fire-and-forget (updates overstory lastActivity)
+		if (options.eventConfig?.onToolEnd) {
+			Bun.spawn(options.eventConfig.onToolEnd, { stdout: "ignore", stderr: "ignore" });
+		}
+
 		// ── Step 7: Append tool results as user message ───────────────────────
 		messages.push({ role: "user", content: toolResultBlocks });
 
@@ -394,6 +420,7 @@ export async function runLoop(
 		totalInputTokens,
 		totalOutputTokens,
 	});
+	await fireSessionEnd(options.eventConfig?.onSessionEnd);
 	return {
 		exitReason: "max_turns",
 		totalTurns,

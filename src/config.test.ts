@@ -190,6 +190,34 @@ describe("loadGuardConfig", () => {
 		writeFileSync(filePath, JSON.stringify({ rules: "not-an-array" }));
 		await expect(loadGuardConfig(filePath)).rejects.toThrow(ConfigError);
 	});
+
+	it("preserves eventConfig from guards file", async () => {
+		const filePath = join(tmpDir, "guards-events.json");
+		writeFileSync(
+			filePath,
+			JSON.stringify({
+				rules: [],
+				eventConfig: {
+					onToolStart: ["node", "hook.js", "tool-start"],
+					onToolEnd: ["node", "hook.js", "tool-end"],
+					onSessionEnd: ["node", "hook.js", "session-end"],
+				},
+			}),
+		);
+		const result = await loadGuardConfig(filePath);
+		expect(result).not.toBeNull();
+		expect(result?.eventConfig?.onToolStart).toEqual(["node", "hook.js", "tool-start"]);
+		expect(result?.eventConfig?.onToolEnd).toEqual(["node", "hook.js", "tool-end"]);
+		expect(result?.eventConfig?.onSessionEnd).toEqual(["node", "hook.js", "session-end"]);
+	});
+
+	it("works without eventConfig (backwards compatible)", async () => {
+		const filePath = join(tmpDir, "guards-no-events.json");
+		writeFileSync(filePath, JSON.stringify({ rules: [] }));
+		const result = await loadGuardConfig(filePath);
+		expect(result).not.toBeNull();
+		expect(result?.eventConfig).toBeUndefined();
+	});
 });
 
 describe("loadConfig backend defaults", () => {
