@@ -304,6 +304,7 @@ export async function runLoop(
 		const toolResultBlocks: ToolResultBlock[] = await Promise.all(
 			toolCalls.map(async (call): Promise<ToolResultBlock> => {
 				// Emit tool_start event before dispatching
+				const argsSummary = JSON.stringify(call.input).slice(0, 200);
 				options.eventEmitter?.emit({
 					type: "tool_start",
 					turn: totalTurns,
@@ -400,7 +401,7 @@ export async function runLoop(
 						});
 					}
 				} else if (rpcReq.method === "followUp") {
-					messages.push({ role: "user", content: `[FOLLOWUP] ${rpcReq.params.content}` });
+					messages.push({ role: "user", content: rpcReq.params.content });
 				}
 				logger.debug(`RPC ${rpcReq.method} injected into turn ${totalTurns}`);
 				rpcReq = options.rpcServer.dequeue();
