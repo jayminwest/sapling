@@ -298,6 +298,47 @@ describe("SaplingPipelineV1", () => {
 });
 
 // ---------------------------------------------------------------------------
+// process — turns not dropped after compaction
+// ---------------------------------------------------------------------------
+
+describe("process — turns not dropped after compaction", () => {
+	it("does not drop new turns after compaction", () => {
+		// Use a tiny window to force compaction of earlier operations quickly.
+		// We add enough turns to trigger compaction, then add one more and verify it appears.
+		const pipeline = new SaplingPipelineV1({ windowSize: 2_000 });
+
+		// Build up a sequence of turns with distinct tool types to trigger operation boundaries
+		// (which creates multiple operations, some of which will get compacted).
+		const turns: Message[] = [TASK_MSG];
+		for (let i = 0; i < 5; i++) {
+			const assistant = makeAssistantMsg([{ name: "read", path: `src/file${i}.ts` }]);
+			const user = makeUserMsg([{ id: `tu_read_${i}` }]);
+			turns.push(assistant, user);
+		}
+
+		// Run pipeline on the first batch to trigger compaction/archiving
+		pipeline.process(makeInput(turns));
+
+		// Now add one more turn with a different tool type
+		// makeAssistantMsg creates tool_use with id=`tu_${name}`, so name="bash" → id="tu_bash"
+		const newAssistant = makeAssistantMsg([{ name: "bash" }]);
+		const newUser = makeUserMsg([{ id: "tu_bash" }]); // matches the tool_use id
+		const allMessages = [...turns, newAssistant, newUser];
+
+		const output = pipeline.process(makeInput(allMessages));
+
+		// The new turn (bash) should appear in the output messages
+		const hasNewTurn = output.messages.some(
+			(msg) =>
+				msg.role === "assistant" &&
+				Array.isArray(msg.content) &&
+				msg.content.some((b) => b.type === "tool_use" && b.name === "bash"),
+		);
+		expect(hasNewTurn).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // extractTurnHint helper
 // ---------------------------------------------------------------------------
 

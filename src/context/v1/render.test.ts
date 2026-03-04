@@ -4,7 +4,13 @@
 
 import { describe, expect, it } from "bun:test";
 import type { Message } from "../../types.ts";
-import { composeSystemPrompt, render, renderMessages, renderPipelineState } from "./render.ts";
+import {
+	composeSystemPrompt,
+	render,
+	renderMessages,
+	renderPipelineState,
+	sanitizeToolPairing,
+} from "./render.ts";
 import type { BudgetUtilization, Operation, Turn } from "./types.ts";
 
 // ---------------------------------------------------------------------------
@@ -430,6 +436,108 @@ describe("renderPipelineState", () => {
 		expect(state.operations).toHaveLength(0);
 		expect(state.activeOperationId).toBeNull();
 		expect(state.operationCounts.active).toBe(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// sanitizeToolPairing
+// ---------------------------------------------------------------------------
+
+describe("sanitizeToolPairing", () => {
+	it("removes orphaned tool_result blocks with no matching tool_use", () => {
+		// Assistant has one tool_use (read), user has two tool_results (read + orphaned)
+		const assistant = makeAssistantMsg([{ name: "read", path: "src/a.ts" }]);
+		const user = makeUserMsg([{ id: "tu_read" }, { id: "tu_orphan" }]);
+		const messages: Message[] = [assistant, user];
+
+		const result = sanitizeToolPairing(messages);
+
+		expect(result).toHaveLength(2);
+		const userContent = result[1]?.content;
+		expect(Array.isArray(userContent)).toBe(true);
+		// Only tu_read should remain
+		const blocks = userContent as unknown as Array<{ tool_use_id: string }>;
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0]?.tool_use_id).toBe("tu_read");
+	});
+
+	it("removes orphaned tool_use blocks with no matching tool_result", () => {
+		// Assistant has two tool_use blocks, user only has result for one
+		const assistant: Message = {
+			role: "assistant",
+			content: [
+				{ type: "tool_use", id: "tu_read", name: "read", input: {} },
+				{ type: "tool_use", id: "tu_orphan", name: "bash", input: {} },
+			],
+		};
+		const user = makeUserMsg([{ id: "tu_read" }]);
+		const messages: Message[] = [assistant, user];
+
+		const result = sanitizeToolPairing(messages);
+
+		expect(result).toHaveLength(2);
+		const assistantContent = result[0]?.content;
+		expect(Array.isArray(assistantContent)).toBe(true);
+		const blocks = assistantContent as Array<{ type: string; id?: string }>;
+		// Only tu_read tool_use should remain
+		const toolUseBlocks = blocks.filter((b) => b.type === "tool_use");
+		expect(toolUseBlocks).toHaveLength(1);
+		expect(toolUseBlocks[0]?.id).toBe("tu_read");
+	});
+
+	it("preserves valid tool_use/tool_result pairs unchanged", () => {
+		const assistant = makeAssistantMsg([{ name: "read", path: "src/a.ts" }]);
+		const user = makeUserMsg([{ id: "tu_read" }]);
+		const messages: Message[] = [assistant, user];
+
+		const result = sanitizeToolPairing(messages);
+
+		expect(result).toHaveLength(2);
+		const userContent = result[1]?.content;
+		const blocks = userContent as unknown as Array<{ tool_use_id: string }>;
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0]?.tool_use_id).toBe("tu_read");
+		const assistantContent = result[0]?.content;
+		const aBlocks = assistantContent as Array<{ type: string; id?: string }>;
+		const toolUseBlocks = aBlocks.filter((b) => b.type === "tool_use");
+		expect(toolUseBlocks).toHaveLength(1);
+		expect(toolUseBlocks[0]?.id).toBe("tu_read");
+	});
+
+	it("handles string user content without modification", () => {
+		const assistant: Message = {
+			role: "assistant",
+			content: [{ type: "tool_use", id: "tu_read", name: "read", input: {} }],
+		};
+		const user: Message = { role: "user", content: "plain string content" };
+		const messages: Message[] = [assistant, user];
+
+		const result = sanitizeToolPairing(messages);
+
+		// String content user message — no tool_result blocks, no changes
+		expect(result).toHaveLength(2);
+		expect(result[1]?.content).toBe("plain string content");
+		// assistant tool_use should be preserved (user has no tool_result blocks)
+		const aBlocks = result[0]?.content as Array<{ type: string }>;
+		const toolUseBlocks = aBlocks.filter((b) => b.type === "tool_use");
+		expect(toolUseBlocks).toHaveLength(1);
+	});
+
+	it("does not remove tool_use blocks from final assistant without following user message", () => {
+		// Final turn: assistant with tool_use but no following user message
+		const assistant: Message = {
+			role: "assistant",
+			content: [{ type: "tool_use", id: "tu_read", name: "read", input: {} }],
+		};
+		const messages: Message[] = [assistant];
+
+		const result = sanitizeToolPairing(messages);
+
+		expect(result).toHaveLength(1);
+		const aBlocks = result[0]?.content as Array<{ type: string; id?: string }>;
+		const toolUseBlocks = aBlocks.filter((b) => b.type === "tool_use");
+		expect(toolUseBlocks).toHaveLength(1);
+		expect(toolUseBlocks[0]?.id).toBe("tu_read");
 	});
 });
 

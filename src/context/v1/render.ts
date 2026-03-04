@@ -97,7 +97,100 @@ export function renderMessages(taskMessage: Message, retainedOps: Operation[]): 
 		}
 	}
 
-	return messages;
+	return sanitizeToolPairing(messages);
+}
+
+// ---------------------------------------------------------------------------
+// Tool-pairing sanitization
+// ---------------------------------------------------------------------------
+
+/**
+ * Remove orphaned tool_use/tool_result blocks from adjacent message pairs.
+ *
+ * Strict API providers (e.g., MiniMax via ANTHROPIC_BASE_URL) require that every
+ * tool_use in an assistant message has a matching tool_result in the immediately
+ * following user message, and vice versa. After compaction or archiving, some pairs
+ * may become mismatched. This function sanitizes the array by:
+ *   - Removing tool_result blocks whose tool_use_id has no matching tool_use in the
+ *     preceding assistant message.
+ *   - Removing tool_use blocks whose id has no matching tool_result in the following
+ *     user message — ONLY when that user message already contains tool_result blocks.
+ *     Final assistant messages with no following user message are left unchanged.
+ *
+ * @param messages - The message array to sanitize (not mutated).
+ * @returns A new array with orphaned blocks removed.
+ */
+export function sanitizeToolPairing(messages: Message[]): Message[] {
+	const result: Message[] = [...messages];
+
+	for (let i = 0; i < result.length; i++) {
+		const msg = result[i];
+		if (!msg || msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
+
+		const nextMsg = result[i + 1];
+
+		// Collect tool_use ids from this assistant message
+		const toolUseIds = new Set<string>();
+		for (const block of msg.content) {
+			if (block.type === "tool_use") {
+				toolUseIds.add(block.id);
+			}
+		}
+
+		// Only process the pair when the next message is a user with tool_result blocks
+		if (nextMsg === undefined || nextMsg.role !== "user" || !Array.isArray(nextMsg.content)) {
+			continue;
+		}
+
+		const userBlocks = nextMsg.content as unknown[];
+		const hasToolResults = userBlocks.some(
+			(b) =>
+				typeof b === "object" && b !== null && (b as { type?: unknown }).type === "tool_result",
+		);
+
+		if (!hasToolResults) continue;
+
+		// Collect tool_use_ids referenced by tool_result blocks in the user message
+		const toolResultIds = new Set<string>();
+		for (const block of userBlocks) {
+			if (
+				typeof block === "object" &&
+				block !== null &&
+				(block as { type?: unknown }).type === "tool_result"
+			) {
+				const id = (block as { tool_use_id?: string }).tool_use_id;
+				if (id !== undefined) toolResultIds.add(id);
+			}
+		}
+
+		// Remove orphaned tool_use blocks from assistant (no matching tool_result)
+		const cleanedAssistant = msg.content.filter(
+			(block) => block.type !== "tool_use" || toolResultIds.has(block.id),
+		);
+
+		// Remove orphaned tool_result blocks from user (no matching tool_use)
+		const cleanedUser = userBlocks.filter((block) => {
+			if (
+				typeof block === "object" &&
+				block !== null &&
+				(block as { type?: unknown }).type === "tool_result"
+			) {
+				const id = (block as { tool_use_id?: string }).tool_use_id;
+				return id !== undefined && toolUseIds.has(id);
+			}
+			return true;
+		}) as import("../../types.ts").ContentBlock[];
+
+		if (
+			cleanedAssistant.length !== msg.content.length ||
+			cleanedUser.length !== userBlocks.length
+		) {
+			result[i] = { ...msg, content: cleanedAssistant };
+			result[i + 1] = { ...nextMsg, content: cleanedUser };
+		}
+	}
+
+	return result;
 }
 
 // ---------------------------------------------------------------------------

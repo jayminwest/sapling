@@ -562,4 +562,98 @@ describe("ingest", () => {
 		expect(result.operations).toHaveLength(0);
 		expect(result.activeOperationId).toBeNull();
 	});
+
+	it("trackedTurnCount accounts for compacted operations (counts as 1)", () => {
+		// A compacted op with 3 turns renders as 1 synthetic pair, not 3.
+		// New messages should include: 1 synthetic pair + 1 new turn (index 1).
+		// extractTurns sees only 1 assistant turn in the message array (the new one after the
+		// synthetic assistant message which has no tool_use blocks).
+		// We set up the operation registry manually and pass a message array containing just the new turn.
+		const compactedOp = makeOperation({
+			id: 1,
+			status: "compacted",
+			summary: "Compacted: explored 3 files",
+			turns: [
+				makeTurn(0, ["read"], ["src/a.ts"]),
+				makeTurn(1, ["read"], ["src/b.ts"]),
+				makeTurn(2, ["read"], ["src/c.ts"]),
+			],
+		});
+		// Messages: task + synthetic assistant (compacted summary, no tool_use) + synthetic user ack
+		//           + new assistant with tool_use + new user with tool_result
+		const syntheticAssistant: Message = {
+			role: "assistant",
+			content: [{ type: "text", text: compactedOp.summary ?? "" }],
+		};
+		const syntheticAck: Message = { role: "user", content: "[continued]" };
+		const newAssistant = makeAssistantMsg([{ name: "edit", path: "src/d.ts" }]);
+		const newUser = makeUserMsg([{ id: "tu_edit" }], "done");
+		const messages: Message[] = [syntheticAssistant, syntheticAck, newAssistant, newUser];
+
+		const result = ingest(messages, [compactedOp], 1);
+
+		// The new turn should be ingested (not silently dropped)
+		const totalTurns = result.operations.reduce((sum, op) => sum + op.turns.length, 0);
+		// compacted op has 3 turns + 1 new turn = 4 total
+		expect(totalTurns).toBe(4);
+	});
+
+	it("trackedTurnCount accounts for archived operations (counts as 0)", () => {
+		// An archived op with 2 turns renders as 0 messages (moved to system prompt).
+		// New messages should be: the active op turns + 1 new turn.
+		const archivedOp = makeOperation({
+			id: 1,
+			status: "archived",
+			turns: [makeTurn(0, ["read"], ["src/a.ts"]), makeTurn(1, ["read"], ["src/b.ts"])],
+		});
+		const activeOp = makeOperation({
+			id: 2,
+			status: "active",
+			turns: [makeTurn(2, ["edit"], ["src/c.ts"])],
+		});
+		// Messages contain only active op turns + a new turn
+		const activeAssistant = makeAssistantMsg([{ name: "edit", path: "src/c.ts" }]);
+		const activeUser = makeUserMsg([{ id: "tu_edit" }], "ok");
+		const newAssistant = makeAssistantMsg([{ name: "bash" }]);
+		const newUser = makeUserMsg([{ id: "tu_bash" }], "tests passed");
+		const messages: Message[] = [activeAssistant, activeUser, newAssistant, newUser];
+
+		const result = ingest(messages, [archivedOp, activeOp], 2);
+
+		const totalTurns = result.operations.reduce((sum, op) => sum + op.turns.length, 0);
+		// archived: 2, active: 1 existing + 1 new = 4 total
+		expect(totalTurns).toBe(4);
+	});
+
+	it("new turns are not lost after compaction", () => {
+		// Full integration: create operations, compact one, add new messages, verify ingestion.
+		const messages1: Message[] = [
+			makeAssistantMsg([{ name: "read", path: "src/a.ts" }]),
+			makeUserMsg([{ id: "tu_read" }], "content a"),
+		];
+		const r1 = ingest(messages1, [], null);
+
+		// Mark the operation as compacted (simulate compact stage)
+		const compactedOps = r1.operations.map((op) => ({
+			...op,
+			status: "compacted" as const,
+			summary: "Compacted summary",
+		}));
+
+		// The rendered output would be a synthetic pair (1 "turn"), then a new turn
+		const syntheticAssistant: Message = {
+			role: "assistant",
+			content: [{ type: "text", text: "Compacted summary" }],
+		};
+		const syntheticAck: Message = { role: "user", content: "[continued]" };
+		const newAssistant = makeAssistantMsg([{ name: "write", path: "src/b.ts" }]);
+		const newUser = makeUserMsg([{ id: "tu_write" }], "written");
+		const messages2: Message[] = [syntheticAssistant, syntheticAck, newAssistant, newUser];
+
+		const r2 = ingest(messages2, compactedOps, r1.activeOperationId);
+
+		// There should be at least one new turn in the result (the write turn)
+		const totalTurns = r2.operations.reduce((sum, op) => sum + op.turns.length, 0);
+		expect(totalTurns).toBeGreaterThan(r1.operations.reduce((s, op) => s + op.turns.length, 0));
+	});
 });
