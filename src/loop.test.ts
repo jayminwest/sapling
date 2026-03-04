@@ -698,4 +698,106 @@ describe("runLoop", () => {
 
 		expect(result.exitReason).toBe("task_complete");
 	});
+
+	it("injects followUp as a new standalone user message (not appended to tool results)", async () => {
+		let dequeueCount = 0;
+		const rpcServer: IRpcServer = {
+			dequeue: () => {
+				// Return followUp on first dequeue
+				if (dequeueCount === 0) {
+					dequeueCount++;
+					return { method: "followUp", params: { content: "please also check the logs" } };
+				}
+				return undefined;
+			},
+			isAbortRequested: () => false,
+		};
+
+		const responses: LlmResponse[] = [
+			mockToolUseResponse("echo", { message: "hello" }, "tc1"),
+			mockTextResponse("done with followUp"),
+		];
+		const client = createMockClient(responses);
+		const registry = createRegistry([createEchoTool()]);
+		const opts = defaultOptions(testDir, { rpcServer });
+
+		const result = await runLoop(client, registry, ctx, opts);
+
+		expect(result.exitReason).toBe("task_complete");
+		expect(result.totalTurns).toBe(2);
+
+		const callsAccessor = client as unknown as { calls: { messages: Message[] }[] };
+		const secondCallMessages = callsAccessor.calls[1]?.messages;
+		expect(secondCallMessages).toBeDefined();
+
+		// followUp should appear as a standalone user message with string content
+		const hasFollowUpMessage = secondCallMessages?.some(
+			(m) =>
+				m.role === "user" &&
+				typeof m.content === "string" &&
+				m.content === "please also check the logs",
+		);
+		expect(hasFollowUpMessage).toBe(true);
+
+		// followUp content must NOT appear inside the tool results array (array-content user message)
+		const hasFollowUpInToolResults = secondCallMessages?.some((m) => {
+			if (m.role !== "user" || typeof m.content === "string") return false;
+			return m.content.some(
+				(b) =>
+					b.type === "text" &&
+					(b as { type: "text"; text: string }).text.includes("please also check the logs"),
+			);
+		});
+		expect(hasFollowUpInToolResults).toBe(false);
+	});
+
+	it("steer appends to tool results while followUp creates a new message", async () => {
+		const requests = [
+			{ method: "steer", params: { content: "steer content" } },
+			{ method: "followUp", params: { content: "followUp content" } },
+		];
+		let requestIdx = 0;
+
+		const rpcServer: IRpcServer = {
+			dequeue: () => {
+				// Return one request per dequeue call
+				return requests[requestIdx++] as
+					| { method: string; params: { content: string } }
+					| undefined;
+			},
+			isAbortRequested: () => false,
+		};
+
+		const responses: LlmResponse[] = [
+			mockToolUseResponse("echo", { message: "hello" }, "tc1"),
+			mockToolUseResponse("echo", { message: "world" }, "tc2"),
+			mockTextResponse("all done"),
+		];
+		const client = createMockClient(responses);
+		const registry = createRegistry([createEchoTool()]);
+		const opts = defaultOptions(testDir, { rpcServer });
+
+		const result = await runLoop(client, registry, ctx, opts);
+
+		expect(result.exitReason).toBe("task_complete");
+
+		const callsAccessor = client as unknown as { calls: { messages: Message[] }[] };
+
+		// Second call: steer was injected into tool results (array content)
+		const secondCallMessages = callsAccessor.calls[1]?.messages;
+		const hasSteerInToolResults = secondCallMessages?.some((m) => {
+			if (m.role !== "user" || typeof m.content === "string") return false;
+			return m.content.some(
+				(b) => b.type === "text" && (b as { type: "text"; text: string }).text.includes("[STEER]"),
+			);
+		});
+		expect(hasSteerInToolResults).toBe(true);
+
+		// Third call: followUp was injected as standalone string message
+		const thirdCallMessages = callsAccessor.calls[2]?.messages;
+		const hasFollowUpMessage = thirdCallMessages?.some(
+			(m) => m.role === "user" && typeof m.content === "string" && m.content === "followUp content",
+		);
+		expect(hasFollowUpMessage).toBe(true);
+	});
 });

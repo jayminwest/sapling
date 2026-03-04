@@ -373,19 +373,24 @@ export async function runLoop(
 		// ── Step 7: Append tool results as user message ───────────────────────
 		messages.push({ role: "user", content: toolResultBlocks });
 
-		// ── Step 7b: Inject queued RPC steer/followUp into tool results ───────
-		// Per decision mx-195088: steered content appended to current turn's
-		// tool results (same user message), not as a separate user message.
+		// ── Step 7b: Inject queued RPC steer/followUp ────────────────────────
+		// steer: appended to current tool results (decision mx-195088)
+		// followUp: injected as a standalone user message (sapling-f409)
 		if (options.rpcServer) {
 			const rpcReq = options.rpcServer.dequeue();
 			if (rpcReq) {
-				const lastMsg = messages[messages.length - 1];
-				if (lastMsg?.role === "user" && Array.isArray(lastMsg.content)) {
-					(lastMsg.content as Array<ContentBlock | ToolResultBlock>).push({
-						type: "text",
-						text: `[${rpcReq.method.toUpperCase()}] ${rpcReq.params.content}`,
-					});
-					logger.debug(`RPC ${rpcReq.method} injected into turn ${totalTurns} tool results`);
+				if (rpcReq.method === "steer") {
+					const lastMsg = messages[messages.length - 1];
+					if (lastMsg?.role === "user" && Array.isArray(lastMsg.content)) {
+						(lastMsg.content as Array<ContentBlock | ToolResultBlock>).push({
+							type: "text",
+							text: `[STEER] ${rpcReq.params.content}`,
+						});
+						logger.debug(`RPC steer injected into turn ${totalTurns} tool results`);
+					}
+				} else if (rpcReq.method === "followUp") {
+					messages.push({ role: "user", content: rpcReq.params.content });
+					logger.debug(`RPC followUp injected as new user message after turn ${totalTurns}`);
 				}
 			}
 		}
