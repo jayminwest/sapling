@@ -264,5 +264,15 @@
 		"status": "active",
 		"createdAt": "2026-03-04T20:04:49.060Z",
 		"completedAt": null
+	},
+	{
+		"id": "group-85760d06",
+		"name": "wave2-config-precedence",
+		"memberIssueIds": [
+			"sapling-4501"
+		],
+		"status": "active",
+		"createdAt": "2026-03-04T20:24:14.471Z",
+		"completedAt": null
 	}
 ]
