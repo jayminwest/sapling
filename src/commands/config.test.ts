@@ -75,10 +75,9 @@ describe("runConfigSet() + runConfigGet()", () => {
 	});
 
 	test("set rejects unknown key", () => {
-		const origExit = process.exitCode;
 		runConfigSet("unknownKey", "val", { cwd: tmpDir });
 		expect(process.exitCode).toBe(1);
-		process.exitCode = origExit as number | undefined;
+		process.exitCode = 0;
 	});
 
 	test("get returns project value with source=project", () => {
@@ -136,10 +135,9 @@ describe("runConfigSet() + runConfigGet()", () => {
 	});
 
 	test("get rejects unknown key", () => {
-		const origExit = process.exitCode;
 		runConfigGet("unknownKey", tmpDir);
 		expect(process.exitCode).toBe(1);
-		process.exitCode = origExit;
+		process.exitCode = 0;
 	});
 
 	test("get accepts snake_case alias", () => {
