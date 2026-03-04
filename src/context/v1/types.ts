@@ -7,6 +7,14 @@
 
 import type { Message, TokenUsage } from "../../types.ts";
 
+export type {
+	BudgetEntry,
+	ContentBlock,
+	Message,
+	TokenUsage,
+	ToolResultBlock,
+} from "../../types.ts";
+
 // ---------------------------------------------------------------------------
 // Turn & TurnMetadata
 // ---------------------------------------------------------------------------
@@ -149,6 +157,8 @@ export interface BudgetUtilization {
 // Boundary detection
 // ---------------------------------------------------------------------------
 
+export type ToolPhase = "read" | "write" | "verify" | "search";
+
 export interface BoundarySignals {
 	toolTypeTransition: boolean;
 	fileScopeChange: boolean;
@@ -182,6 +192,26 @@ export const BOUNDARY_WEIGHTS: Readonly<Record<keyof BoundarySignals, number>> =
 
 /** Score threshold above which a boundary is declared. */
 export const BOUNDARY_THRESHOLD = 0.5;
+
+/** Maps tool names to their phase category for boundary detection. */
+export const TOOL_PHASES: Readonly<Record<string, ToolPhase>> = {
+	read: "read",
+	grep: "search",
+	glob: "search",
+	write: "write",
+	edit: "write",
+	bash: "verify",
+} as const;
+
+/** Regex patterns indicating the agent is transitioning to a new sub-task. */
+export const INTENT_PATTERNS: readonly RegExp[] = [
+	/\bnow (?:let me|I(?:'ll| will| need to| should))\b/i,
+	/\bnext,?\s+I\b/i,
+	/\bmoving on to\b/i,
+	/\blet(?:'s| us) (?:switch|move|turn) to\b/i,
+	/\bthat(?:'s| is) done[.,]?\s+/i,
+	/\bwith that (?:complete|finished|done)\b/i,
+];
 
 /** Evaluate stage scoring weights (must sum to 1.0). */
 export const EVAL_WEIGHTS: Readonly<EvalWeights> = {
@@ -226,3 +256,6 @@ export const TOOL_OUTPUT_TRUNCATION: Readonly<{
 	readKeepLastLines: 20,
 	globMaxResults: 30,
 } as const;
+
+/** Operations with score below this threshold are eligible for compaction. */
+export const COMPACTION_SCORE_THRESHOLD = 0.3;
