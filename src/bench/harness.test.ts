@@ -439,76 +439,76 @@ describe("v1 pipeline metrics", () => {
 
 	it("v1 totalInputTokens is non-negative", () => {
 		const result = runBenchmark(SHORT_SCENARIO, { includeV1: true });
-		expect(result.v1!.totalInputTokens).toBeGreaterThanOrEqual(0);
+		expect(result.v1?.totalInputTokens).toBeGreaterThanOrEqual(0);
 	});
 
 	it("v1 peakUtilization is between 0 and 1", () => {
 		const result = runBenchmark(MEDIUM_SCENARIO, { includeV1: true });
-		expect(result.v1!.peakUtilization).toBeGreaterThanOrEqual(0);
-		expect(result.v1!.peakUtilization).toBeLessThanOrEqual(1);
+		expect(result.v1?.peakUtilization).toBeGreaterThanOrEqual(0);
+		expect(result.v1?.peakUtilization).toBeLessThanOrEqual(1);
 	});
 
 	it("v1 meanUtilization is between 0 and 1", () => {
 		const result = runBenchmark(MEDIUM_SCENARIO, { includeV1: true });
-		expect(result.v1!.meanUtilization).toBeGreaterThanOrEqual(0);
-		expect(result.v1!.meanUtilization).toBeLessThanOrEqual(1);
+		expect(result.v1?.meanUtilization).toBeGreaterThanOrEqual(0);
+		expect(result.v1?.meanUtilization).toBeLessThanOrEqual(1);
 	});
 
 	it("v1 peakUtilization >= meanUtilization", () => {
 		const result = runBenchmark(MEDIUM_SCENARIO, { includeV1: true });
-		expect(result.v1!.peakUtilization).toBeGreaterThanOrEqual(result.v1!.meanUtilization);
+		expect(result.v1?.peakUtilization).toBeGreaterThanOrEqual(result.v1?.meanUtilization ?? 0);
 	});
 
 	it("v1 operationCount > 0 for non-trivial scenarios", () => {
 		const result = runBenchmark(MEDIUM_SCENARIO, { includeV1: true });
-		expect(result.v1!.operationCount).toBeGreaterThan(0);
+		expect(result.v1?.operationCount).toBeGreaterThan(0);
 	});
 
 	it("v1 compactionRatio is between 0 and 1", () => {
 		const result = runBenchmark(LONG_SCENARIO, { includeV1: true });
-		expect(result.v1!.compactionRatio).toBeGreaterThanOrEqual(0);
-		expect(result.v1!.compactionRatio).toBeLessThanOrEqual(1);
+		expect(result.v1?.compactionRatio).toBeGreaterThanOrEqual(0);
+		expect(result.v1?.compactionRatio).toBeLessThanOrEqual(1);
 	});
 
 	it("v1 archiveEntryCount equals archivedCount", () => {
 		const result = runBenchmark(LONG_SCENARIO, { includeV1: true });
-		expect(result.v1!.archiveEntryCount).toBe(result.v1!.archivedCount);
+		expect(result.v1?.archiveEntryCount).toBe(result.v1?.archivedCount);
 	});
 
 	it("v1 compactedCount + archivedCount <= operationCount", () => {
 		const result = runBenchmark(LONG_SCENARIO, { includeV1: true });
-		expect(result.v1!.compactedCount + result.v1!.archivedCount).toBeLessThanOrEqual(
-			result.v1!.operationCount,
+		expect((result.v1?.compactedCount ?? 0) + (result.v1?.archivedCount ?? 0)).toBeLessThanOrEqual(
+			result.v1?.operationCount ?? 0,
 		);
 	});
 
 	it("v1 reductionFraction is between 0 and 1", () => {
 		const result = runBenchmark(LONG_SCENARIO, { includeV1: true });
-		expect(result.v1!.reductionFraction).toBeGreaterThanOrEqual(0);
-		expect(result.v1!.reductionFraction).toBeLessThanOrEqual(1);
+		expect(result.v1?.reductionFraction).toBeGreaterThanOrEqual(0);
+		expect(result.v1?.reductionFraction).toBeLessThanOrEqual(1);
 	});
 
 	it("v1 turns array has one entry per assistant message", () => {
 		const result = runBenchmark(SHORT_SCENARIO, { includeV1: true });
-		expect(result.v1!.turns.length).toBeGreaterThan(0);
-		expect(result.v1!.turns.length).toBe(result.turns);
+		expect(result.v1?.turns.length).toBeGreaterThan(0);
+		expect(result.v1?.turns.length).toBe(result.turns);
 	});
 
 	it("v1 context limit hits is non-negative", () => {
 		const result = runBenchmark(SHORT_SCENARIO, { includeV1: true });
-		expect(result.v1!.contextLimitHits).toBeGreaterThanOrEqual(0);
+		expect(result.v1?.contextLimitHits).toBeGreaterThanOrEqual(0);
 	});
 
 	it("v1 hits no context limit on 200K window for LONG scenario", () => {
 		const result = runBenchmark(LONG_SCENARIO, { includeV1: true });
-		expect(result.v1!.contextLimitHits).toBe(0);
-		expect(result.v1!.hitContextLimit).toBe(false);
+		expect(result.v1?.contextLimitHits).toBe(0);
+		expect(result.v1?.hitContextLimit).toBe(false);
 	});
 
 	it("v1 reductionPct matches reductionFraction * 100 (rounded)", () => {
 		const result = runBenchmark(MEDIUM_SCENARIO, { includeV1: true });
-		const expected = Math.round(result.v1!.reductionFraction * 100 * 10) / 10;
-		expect(result.v1!.reductionPct).toBe(expected);
+		const expected = Math.round((result.v1?.reductionFraction ?? 0) * 100 * 10) / 10;
+		expect(result.v1?.reductionPct).toBe(expected);
 	});
 });
 
@@ -519,20 +519,20 @@ describe("v0 vs v1 comparison", () => {
 		for (const scenario of ALL_SCENARIOS) {
 			const result = runBenchmark(scenario, { includeV1: true });
 			expect(result.managedTotalInputTokens).toBeGreaterThanOrEqual(0);
-			expect(result.v1!.totalInputTokens).toBeGreaterThanOrEqual(0);
+			expect(result.v1?.totalInputTokens).toBeGreaterThanOrEqual(0);
 		}
 	});
 
 	it("v1 produces valid utilization for all scenarios", () => {
 		for (const scenario of ALL_SCENARIOS) {
 			const result = runBenchmark(scenario, { includeV1: true });
-			expect(result.v1!.peakUtilization).toBeGreaterThanOrEqual(0);
-			expect(result.v1!.meanUtilization).toBeGreaterThanOrEqual(0);
+			expect(result.v1?.peakUtilization).toBeGreaterThanOrEqual(0);
+			expect(result.v1?.meanUtilization).toBeGreaterThanOrEqual(0);
 		}
 	});
 
 	it("v1 operation count is positive for non-trivial scenarios", () => {
 		const longResult = runBenchmark(LONG_SCENARIO, { includeV1: true });
-		expect(longResult.v1!.operationCount).toBeGreaterThan(0);
+		expect(longResult.v1?.operationCount).toBeGreaterThan(0);
 	});
 });

@@ -166,7 +166,7 @@ describe("enforceBudget", () => {
 		const result = enforceBudget([active], 5000, WINDOW);
 
 		expect(result.retained).toHaveLength(1);
-		expect(result.retained[0]!.id).toBe(0);
+		expect(result.retained[0]?.id).toBe(0);
 		expect(result.archived).toHaveLength(0);
 	});
 
@@ -378,9 +378,9 @@ describe("budget (stage entry point)", () => {
 		budget(ops, 50, smallWindow);
 
 		// Active and highest-score completed should be retained
-		expect(ops[0]!.status).toBe("active");
-		expect(ops[1]!.status).toBe("completed");
-		expect(ops[2]!.status).toBe("archived");
+		expect(ops[0]?.status).toBe("active");
+		expect(ops[1]?.status).toBe("completed");
+		expect(ops[2]?.status).toBe("archived");
 	});
 
 	it("returns BudgetUtilization", () => {
@@ -400,7 +400,7 @@ describe("budget (stage entry point)", () => {
 		budget(ops, 50, smallWindow);
 
 		// Active is never archived regardless of token count
-		expect(ops[0]!.status).toBe("active");
+		expect(ops[0]?.status).toBe("active");
 	});
 
 	it("does not modify already-archived operations", () => {
@@ -409,6 +409,6 @@ describe("budget (stage entry point)", () => {
 
 		budget(ops, 1000, 200_000);
 
-		expect(ops[0]!.status).toBe("archived");
+		expect(ops[0]?.status).toBe("archived");
 	});
 });

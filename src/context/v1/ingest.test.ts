@@ -114,10 +114,10 @@ describe("extractTurns", () => {
 
 		const turns = extractTurns(messages);
 		expect(turns).toHaveLength(2);
-		expect(turns[0]!.index).toBe(0);
-		expect(turns[0]!.meta.tools).toContain("read");
-		expect(turns[1]!.index).toBe(1);
-		expect(turns[1]!.meta.tools).toContain("edit");
+		expect(turns[0]?.index).toBe(0);
+		expect(turns[0]?.meta.tools).toContain("read");
+		expect(turns[1]?.index).toBe(1);
+		expect(turns[1]?.meta.tools).toContain("edit");
 	});
 
 	it("handles final assistant turn with no tool results", () => {
@@ -129,7 +129,7 @@ describe("extractTurns", () => {
 
 		const turns = extractTurns(messages);
 		expect(turns).toHaveLength(2);
-		expect(turns[1]!.toolResults).toBeNull();
+		expect(turns[1]?.toolResults).toBeNull();
 	});
 
 	it("skips leading user messages (e.g., task prompt)", () => {
@@ -141,7 +141,7 @@ describe("extractTurns", () => {
 
 		const turns = extractTurns(messages);
 		expect(turns).toHaveLength(1);
-		expect(turns[0]!.meta.tools).toContain("glob");
+		expect(turns[0]?.meta.tools).toContain("glob");
 	});
 
 	it("returns empty array for empty message list", () => {
@@ -155,7 +155,7 @@ describe("extractTurns", () => {
 		];
 
 		const turns = extractTurns(messages);
-		expect(turns[0]!.meta.files).toContain("src/context/v1/types.ts");
+		expect(turns[0]?.meta.files).toContain("src/context/v1/types.ts");
 	});
 
 	it("detects errors from tool results", () => {
@@ -165,7 +165,7 @@ describe("extractTurns", () => {
 		];
 
 		const turns = extractTurns(messages);
-		expect(turns[0]!.meta.hasError).toBe(true);
+		expect(turns[0]?.meta.hasError).toBe(true);
 	});
 });
 
@@ -453,9 +453,9 @@ describe("ingestTurn", () => {
 		const result = ingestTurn([], null, turn);
 
 		expect(result.operations).toHaveLength(1);
-		expect(result.operations[0]!.status).toBe("active");
-		expect(result.operations[0]!.turns).toHaveLength(1);
-		expect(result.activeOperationId).toBe(result.operations[0]!.id);
+		expect(result.operations[0]?.status).toBe("active");
+		expect(result.operations[0]?.turns).toHaveLength(1);
+		expect(result.activeOperationId).toBe(result.operations[0]?.id ?? null);
 	});
 
 	it("adds turn to active operation when no boundary", () => {
@@ -466,7 +466,7 @@ describe("ingestTurn", () => {
 		const r2 = ingestTurn(r1.operations, r1.activeOperationId, t2);
 
 		expect(r2.operations).toHaveLength(1);
-		expect(r2.operations[0]!.turns).toHaveLength(2);
+		expect(r2.operations[0]?.turns).toHaveLength(2);
 	});
 
 	it("creates new operation when boundary detected", () => {
@@ -477,15 +477,15 @@ describe("ingestTurn", () => {
 
 		const r1 = ingestTurn([], null, t1);
 		// Manually set the active op's tools and files
-		r1.operations[0]!.tools.add("read");
-		r1.operations[0]!.files.add("src/foo.ts");
+		r1.operations[0]?.tools.add("read");
+		r1.operations[0]?.files.add("src/foo.ts");
 
 		const r2 = ingestTurn(r1.operations, r1.activeOperationId, t2);
 
 		expect(r2.operations).toHaveLength(2);
-		expect(r2.operations[0]!.status).toBe("completed");
-		expect(r2.operations[1]!.status).toBe("active");
-		expect(r2.activeOperationId).toBe(r2.operations[1]!.id);
+		expect(r2.operations[0]?.status).toBe("completed");
+		expect(r2.operations[1]?.status).toBe("active");
+		expect(r2.activeOperationId).toBe(r2.operations[1]?.id ?? null);
 	});
 
 	it("finalizes operation with outcome on boundary", () => {
@@ -494,12 +494,12 @@ describe("ingestTurn", () => {
 		const t2 = makeTurn(1, ["write"], ["src/b.ts"], { timestamp: now + 100 });
 
 		const r1 = ingestTurn([], null, t1);
-		r1.operations[0]!.tools.add("read");
-		r1.operations[0]!.files.add("src/a.ts");
+		r1.operations[0]?.tools.add("read");
+		r1.operations[0]?.files.add("src/a.ts");
 
 		const r2 = ingestTurn(r1.operations, r1.activeOperationId, t2);
 
-		expect(r2.operations[0]!.outcome).not.toBe("in_progress");
+		expect(r2.operations[0]?.outcome).not.toBe("in_progress");
 	});
 });
 
@@ -523,7 +523,7 @@ describe("ingest", () => {
 		const result = ingest(messages, [], null);
 
 		expect(result.operations).toHaveLength(1);
-		expect(result.operations[0]!.turns).toHaveLength(2);
+		expect(result.operations[0]?.turns).toHaveLength(2);
 	});
 
 	it("is idempotent when called twice with the same messages", () => {
@@ -537,7 +537,7 @@ describe("ingest", () => {
 
 		// No new turns — registry should be unchanged
 		expect(r2.operations).toHaveLength(r1.operations.length);
-		expect(r2.operations[0]!.turns).toHaveLength(r1.operations[0]!.turns.length);
+		expect(r2.operations[0]?.turns).toHaveLength(r1.operations[0]?.turns.length ?? 0);
 	});
 
 	it("handles incremental ingestion correctly", () => {
@@ -554,7 +554,7 @@ describe("ingest", () => {
 		const r1 = ingest(messages1, [], null);
 		const r2 = ingest(messages2, r1.operations, r1.activeOperationId);
 
-		expect(r2.operations[0]!.turns).toHaveLength(2);
+		expect(r2.operations[0]?.turns).toHaveLength(2);
 	});
 
 	it("starts with empty operations when no messages", () => {

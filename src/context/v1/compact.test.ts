@@ -152,7 +152,7 @@ describe("extractPurpose", () => {
 	});
 
 	it("caps extracted purpose at 100 chars", () => {
-		const longText = "I'll " + "x".repeat(200) + ".";
+		const longText = `I'll ${"x".repeat(200)}.`;
 		const op = makeOp({
 			turns: [makeTurn(0, [{ name: "bash" }], { text: longText })],
 		});
@@ -302,7 +302,7 @@ describe("truncateToolOutput", () => {
 		const bashBudget = TOOL_OUTPUT_TRUNCATION.bashMaxTokens * 4;
 		const manyLines = Array.from({ length: 200 }, (_, i) => `line ${i}`).join("\n");
 		// Force over budget by using content > bashBudget chars
-		const longContent = manyLines + "\n" + "x".repeat(bashBudget);
+		const longContent = `${manyLines}\n${"x".repeat(bashBudget)}`;
 		const result = truncateToolOutput("bash", longContent);
 		expect(result).toContain("lines omitted");
 		expect(result.length).toBeLessThan(longContent.length);
@@ -319,7 +319,7 @@ describe("truncateToolOutput", () => {
 	it("truncates read output using head+tail strategy", () => {
 		const readBudget = TOOL_OUTPUT_TRUNCATION.readMaxTokens * 4;
 		const manyLines = Array.from({ length: 300 }, (_, i) => `line ${i}`).join("\n");
-		const longContent = manyLines + "\n" + "x".repeat(readBudget);
+		const longContent = `${manyLines}\n${"x".repeat(readBudget)}`;
 		const result = truncateToolOutput("read", longContent);
 		expect(result).toContain("lines omitted");
 	});
@@ -368,7 +368,7 @@ describe("truncateOperationOutputs", () => {
 	it("truncates bash tool_result content when over budget", () => {
 		const bashBudget = TOOL_OUTPUT_TRUNCATION.bashMaxTokens * 4;
 		const largeOutput = Array.from({ length: 200 }, (_, i) => `line ${i}`).join("\n");
-		const longContent = largeOutput + "\n" + "x".repeat(bashBudget);
+		const longContent = `${largeOutput}\n${"x".repeat(bashBudget)}`;
 
 		const turn = makeTurn(0, [{ name: "bash", id: "tu_bash", resultContent: longContent }]);
 		const op = makeOp({ turns: [turn], score: 0.5 });

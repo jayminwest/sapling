@@ -1117,7 +1117,7 @@ src/api/handler.ts:34 noExplicitAny: Unexpected any. Use unknown.
 	const lintFiles = ["src/core/engine.ts", "src/utils/helpers.ts", "src/api/handler.ts"];
 	for (let i = 0; i < lintFiles.length; i++) {
 		msgs.push(assistantTool("read", `mlr${i}`, { file_path: lintFiles[i] }));
-		msgs.push(toolResult(`mlr${i}`, syntheticFile(lintFiles[i]!, 500)));
+		msgs.push(toolResult(`mlr${i}`, syntheticFile(lintFiles[i] as string, 500)));
 	}
 
 	// Plan (turn 5)
@@ -1137,7 +1137,7 @@ src/api/handler.ts:34 noExplicitAny: Unexpected any. Use unknown.
 		{ file: "src/api/handler.ts", old: "any", line: "34" },
 	];
 	for (let i = 0; i < fixes.length; i++) {
-		const f = fixes[i]!;
+		const f = fixes[i] as (typeof fixes)[number];
 		msgs.push(
 			assistantTool("edit", `mle${i}`, {
 				file_path: f.file,
