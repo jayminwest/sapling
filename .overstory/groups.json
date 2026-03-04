@@ -274,5 +274,16 @@
 		"status": "active",
 		"createdAt": "2026-03-04T20:24:14.471Z",
 		"completedAt": null
+	},
+	{
+		"id": "group-d5303d12",
+		"name": "wave3-config-session",
+		"memberIssueIds": [
+			"sapling-3c11",
+			"sapling-ecc2"
+		],
+		"status": "active",
+		"createdAt": "2026-03-04T20:32:15.294Z",
+		"completedAt": null
 	}
 ]
