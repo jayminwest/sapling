@@ -28,6 +28,11 @@ jobs:
       - run: bun run typecheck
       - run: bun test
 
+      - name: Set up npm auth
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+
       - name: Check if version changed
         id: version-check
         run: |
@@ -54,11 +59,7 @@ jobs:
 
       - name: Publish to npm
         if: steps.version-check.outputs.publish == 'true'
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-          npm publish --access public
+        run: npm publish --access public
 
       - name: Tag release
         if: steps.version-check.outputs.publish == 'true'
