@@ -93,7 +93,7 @@ describe("runConfigSet() + runConfigGet()", () => {
 		delete process.env.SAPLING_MODEL;
 		try {
 			runConfigGet("model", tmpDir);
-			expect(capturedStdout).toContain("claude-sonnet-4-6");
+			expect(capturedStdout).toContain("MiniMax-M2.5");
 			expect(capturedStdout).toContain("default");
 		} finally {
 			if (origEnv !== undefined) process.env.SAPLING_MODEL = origEnv;

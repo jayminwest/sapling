@@ -50,11 +50,11 @@ program
 program
 	.command("run [prompt]")
 	.description("Execute a task")
-	.option("--model <name>", "Model to use (default: claude-sonnet-4-6)")
+	.option("--model <name>", "Model to use (default: MiniMax-M2.5)")
 	.option("--cwd <path>", "Working directory", ".")
 	.option(
 		"--backend <cc|pi|sdk>",
-		"LLM backend (auto-detects sdk inside CC sessions) (default: cc)",
+		"LLM backend (default: sdk)",
 	)
 	.option("--system-prompt-file <path>", "Custom system prompt file")
 	.option("--max-turns <n>", "Max turns (default: 200)")

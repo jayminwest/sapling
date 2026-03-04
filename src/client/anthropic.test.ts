@@ -170,7 +170,7 @@ describe("AnthropicClient", () => {
 			expect(result.content[0]).toMatchObject({ type: "text", text: "DI works!" });
 		});
 
-		it("passes claude-sonnet-4-6 as default model", async () => {
+		it("passes MiniMax-M2.5 as default model", async () => {
 			let capturedModel: unknown;
 			const sdkResp = makeSdkResponse();
 			const diClient = makeDiClient((params) => {
@@ -180,7 +180,7 @@ describe("AnthropicClient", () => {
 			const client = new AnthropicClient({ _client: diClient });
 
 			await client.call(baseRequest);
-			expect(capturedModel).toBe("claude-sonnet-4-6");
+			expect(capturedModel).toBe("MiniMax-M2.5");
 		});
 
 		it("classifies 401 as SDK_AUTH_FAILED", async () => {

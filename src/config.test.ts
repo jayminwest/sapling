@@ -121,9 +121,9 @@ describe("loadConfig", () => {
 		expect(config.apiBaseUrl).toBe("https://api.minimax.io/anthropic");
 	});
 
-	it("leaves apiBaseUrl undefined when ANTHROPIC_BASE_URL is not set", async () => {
+	it("uses default apiBaseUrl when ANTHROPIC_BASE_URL is not set", async () => {
 		const config = await loadConfig();
-		expect(config.apiBaseUrl).toBeUndefined();
+		expect(config.apiBaseUrl).toBe("https://api.minimax.io/anthropic");
 	});
 
 	it("reads ANTHROPIC_API_KEY into apiKey", async () => {

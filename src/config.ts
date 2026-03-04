@@ -26,7 +26,8 @@ const DEFAULT_BUDGET: ContextBudget = {
 };
 
 export const DEFAULT_CONFIG: SaplingConfig = {
-	model: "claude-sonnet-4-6",
+	model: "MiniMax-M2.5",
+	apiBaseUrl: "https://api.minimax.io/anthropic",
 	backend: "sdk",
 	maxTurns: 200,
 	cwd: process.cwd(),

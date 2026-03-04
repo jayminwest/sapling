@@ -92,7 +92,7 @@ Three system prompt files emitted by Canopy: **builder** (writes code), **review
 - **Tabs for indentation**, 100-char line width (Biome).
 - **Tests are colocated** — `src/foo.test.ts` next to `src/foo.ts`. Tests use real temp directories (helpers in `src/test-helpers.ts`).
 - **Error hierarchy** in `src/errors.ts`: `SaplingError` base → `ClientError`, `ToolError`, `ContextError`, `ConfigError`.
-- **Config** (`src/config.ts`) three-layer cascade: env vars → project YAML (`.sapling/config.yaml`) → home YAML (`~/.sapling/config.yaml`) → defaults. Env vars: `SAPLING_MODEL`, `SAPLING_BACKEND`, `SAPLING_MAX_TURNS`, `SAPLING_CONTEXT_WINDOW`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`. Falls back to `~/.sapling/auth.json` credentials. Model alias resolution (e.g., `sonnet` → `claude-sonnet-4-6`).
+- **Config** (`src/config.ts`) three-layer cascade: env vars → project YAML (`.sapling/config.yaml`) → home YAML (`~/.sapling/config.yaml`) → defaults. Env vars: `SAPLING_MODEL`, `SAPLING_BACKEND`, `SAPLING_MAX_TURNS`, `SAPLING_CONTEXT_WINDOW`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`. Falls back to `~/.sapling/auth.json` credentials. Model alias resolution (e.g., `sonnet` → `claude-sonnet-4-6`). Default model: `MiniMax-M2.5` via MiniMax's Anthropic-compatible API.
 - **Agent prompt files in `agents/`** are emitted by Canopy — do not manually edit them. Use `cn update <name>` then `cn emit`.
 - **JSONL data files** (`.mulch/`, `.seeds/`, `.canopy/`) use `merge=union` git strategy (see `.gitattributes`).
 

@@ -19,14 +19,14 @@ Requires [Bun](https://bun.sh) >= 1.0.
 ## Quick Start
 
 ```bash
-# Run a task using Claude Code subscription billing
+# Run a task
 sp run "Add input validation to the login function in src/auth.ts"
 
-# Use the Anthropic SDK backend (API billing)
+# Use the SDK backend directly
 sp run "Fix the failing test in src/utils.test.ts" --backend sdk
 
 # Specify model and working directory
-sp run "Refactor the auth module" --model claude-sonnet-4-6 --cwd /path/to/project
+sp run "Refactor the auth module" --model MiniMax-M2.5 --cwd /path/to/project
 
 # Verbose mode (log context manager decisions)
 sp run "Implement the caching layer" --verbose
@@ -39,9 +39,9 @@ sp run "Add error handling" --json
 
 ```
 sapling run <prompt>            Execute a task
-  --model <name>                  Model to use (default: claude-sonnet-4-6)
+  --model <name>                  Model to use (default: MiniMax-M2.5)
   --cwd <path>                    Working directory (default: .)
-  --backend <cc|pi|sdk>           LLM backend (default: cc)
+  --backend <cc|pi|sdk>           LLM backend (default: sdk)
   --system-prompt-file <path>     Custom system prompt
   --max-turns <n>                 Max turns (default: 200)
   --verbose                       Log context manager decisions
@@ -177,8 +177,8 @@ Sapling is part of the [os-eco](https://github.com/jayminwest/os-eco) AI agent t
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SAPLING_MODEL` | `claude-sonnet-4-6` | Model to use |
-| `SAPLING_BACKEND` | `cc` | LLM backend (`cc`, `pi`, or `sdk`) |
+| `SAPLING_MODEL` | `MiniMax-M2.5` | Model to use |
+| `SAPLING_BACKEND` | `sdk` | LLM backend (`cc`, `pi`, or `sdk`) |
 | `SAPLING_MAX_TURNS` | `200` | Maximum agent turns |
 | `SAPLING_CONTEXT_WINDOW` | `200000` | Context window size in tokens |
 | `ANTHROPIC_BASE_URL` | — | Custom API base URL for compatible providers |

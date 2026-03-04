@@ -43,7 +43,7 @@ describe("runInit()", () => {
 	test("config.yaml contains project name and defaults", async () => {
 		await runInit(tmpDir, false);
 		const config = readFileSync(join(tmpDir, ".sapling", "config.yaml"), "utf8");
-		expect(config).toContain("model: claude-sonnet-4-6");
+		expect(config).toContain("model: MiniMax-M2.5");
 		expect(config).toContain("max_turns: 200");
 		expect(config).toContain("context_pipeline: v1");
 	});

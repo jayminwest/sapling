@@ -141,7 +141,7 @@ export class AnthropicClient implements LlmClient {
 
 		try {
 			const response = await client.messages.create({
-				model: request.model ?? this.model ?? "claude-sonnet-4-6",
+				model: request.model ?? this.model ?? "MiniMax-M2.5",
 				system: request.systemPrompt,
 				messages: request.messages,
 				tools: request.tools,

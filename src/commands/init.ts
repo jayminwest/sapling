@@ -37,7 +37,7 @@ export async function runInit(cwd: string, jsonMode: boolean): Promise<void> {
 		[
 			`# Sapling project configuration`,
 			`project: "${projectName}"`,
-			`model: claude-sonnet-4-6`,
+			`model: MiniMax-M2.5`,
 			`max_turns: 200`,
 			`context_pipeline: v1`,
 			``,
