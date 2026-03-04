@@ -107,8 +107,26 @@ export interface LoopResult {
 	totalTurns: number;
 	totalInputTokens: number;
 	totalOutputTokens: number;
+	totalCacheReadTokens: number;
+	totalCacheCreationTokens: number;
 	error?: string;
 	responseText?: string;
+}
+
+export interface SessionRecord {
+	timestamp: string;
+	promptSummary: string;
+	filesModified: string[];
+	tokenUsage: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheCreation: number;
+	};
+	durationMs: number;
+	model: string;
+	exitReason: string;
+	totalTurns: number;
 }
 
 // ─── Config Types ─────────────────────────────────────────────────────────────

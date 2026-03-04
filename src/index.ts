@@ -12,6 +12,7 @@ import { SaplingError } from "./errors.ts";
 import { jsonOutput, printJson, printJsonError } from "./json.ts";
 import { colors, setColorEnabled } from "./logging/color.ts";
 import { configure, logger } from "./logging/logger.ts";
+import { appendSessionRecord, summarizePrompt } from "./session.ts";
 import type { LlmBackend, RunOptions } from "./types.ts";
 
 export const VERSION = "0.2.0";
@@ -111,6 +112,22 @@ program
 				setColorEnabled(!config.quiet && !config.json);
 
 				const result = await runCommand(prompt, opts, config);
+
+				appendSessionRecord(config.cwd, {
+					timestamp: new Date().toISOString(),
+					promptSummary: summarizePrompt(prompt),
+					filesModified: [],
+					tokenUsage: {
+						input: result.totalInputTokens,
+						output: result.totalOutputTokens,
+						cacheRead: result.totalCacheReadTokens,
+						cacheCreation: result.totalCacheCreationTokens,
+					},
+					durationMs: Date.now() - startTime,
+					model: config.model,
+					exitReason: result.exitReason,
+					totalTurns: result.totalTurns,
+				});
 
 				if (config.json) {
 					if (result.responseText) {

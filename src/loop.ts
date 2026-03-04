@@ -145,6 +145,8 @@ export async function runLoop(
 	let totalTurns = 0;
 	let totalInputTokens = 0;
 	let totalOutputTokens = 0;
+	let totalCacheReadTokens = 0;
+	let totalCacheCreationTokens = 0;
 
 	const toolDefs = tools.toDefinitions();
 
@@ -185,7 +187,14 @@ export async function runLoop(
 				totalOutputTokens,
 			});
 			await fireSessionEnd(options.eventConfig?.onSessionEnd);
-			return { exitReason: "aborted", totalTurns, totalInputTokens, totalOutputTokens };
+			return {
+				exitReason: "aborted",
+				totalTurns,
+				totalInputTokens,
+				totalOutputTokens,
+				totalCacheReadTokens,
+				totalCacheCreationTokens,
+			};
 		}
 
 		totalTurns++;
@@ -224,6 +233,8 @@ export async function runLoop(
 				totalTurns,
 				totalInputTokens,
 				totalOutputTokens,
+				totalCacheReadTokens,
+				totalCacheCreationTokens,
 				error: message,
 			};
 		}
@@ -231,6 +242,8 @@ export async function runLoop(
 		// ── Step 3: Record token usage ────────────────────────────────────────
 		totalInputTokens += response.usage.inputTokens;
 		totalOutputTokens += response.usage.outputTokens;
+		totalCacheReadTokens += response.usage.cacheReadTokens ?? 0;
+		totalCacheCreationTokens += response.usage.cacheCreationTokens ?? 0;
 
 		// ── Step 4: Append assistant response ─────────────────────────────────
 		messages.push({ role: "assistant", content: response.content });
@@ -273,6 +286,8 @@ export async function runLoop(
 				totalTurns,
 				totalInputTokens,
 				totalOutputTokens,
+				totalCacheReadTokens,
+				totalCacheCreationTokens,
 				responseText: finalText || undefined,
 			};
 		}
@@ -449,5 +464,7 @@ export async function runLoop(
 		totalTurns,
 		totalInputTokens,
 		totalOutputTokens,
+		totalCacheReadTokens,
+		totalCacheCreationTokens,
 	};
 }
