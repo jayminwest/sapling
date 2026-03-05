@@ -241,6 +241,8 @@ export const TOOL_OUTPUT_TRUNCATION: Readonly<{
 	bashMaxTokens: number;
 	bashKeepFirstLines: number;
 	bashKeepLastLines: number;
+	/** Aggressive bash limit applied to failure-outcome operations. */
+	failureBashMaxTokens: number;
 	grepMaxTokens: number;
 	readMaxTokens: number;
 	readKeepFirstLines: number;
@@ -250,12 +252,20 @@ export const TOOL_OUTPUT_TRUNCATION: Readonly<{
 	bashMaxTokens: 3000,
 	bashKeepFirstLines: 30,
 	bashKeepLastLines: 15,
+	failureBashMaxTokens: 1000,
 	grepMaxTokens: 1500,
 	readMaxTokens: 4000,
 	readKeepFirstLines: 60,
 	readKeepLastLines: 20,
 	globMaxResults: 30,
 } as const;
+
+/**
+ * Maximum fraction of the operation budget that any single non-active operation may consume.
+ * Completed/compacted operations exceeding this cap are archived even if budget remains,
+ * preventing large failure-output turns from monopolizing the history zone.
+ */
+export const MAX_SINGLE_OP_BUDGET_FRACTION = 0.5;
 
 /** Operations with score below this threshold are eligible for compaction. */
 export const COMPACTION_SCORE_THRESHOLD = 0.3;

@@ -495,4 +495,112 @@ describe("compact", () => {
 		compact([op], null);
 		expect(op.status).toBe("compacted");
 	});
+
+	it("truncates active operation tool outputs without compacting", () => {
+		const bashBudget = TOOL_OUTPUT_TRUNCATION.bashMaxTokens * 4;
+		const largeOutput = Array.from({ length: 200 }, (_, i) => `line ${i}`).join("\n");
+		const longContent = `${largeOutput}\n${"x".repeat(bashBudget)}`;
+
+		const turn = makeTurn(0, [{ name: "bash", id: "tu_bash", resultContent: longContent }]);
+		const op = makeOp({ id: 5, status: "active", score: 1.0, turns: [turn] });
+
+		compact([op], 5);
+
+		// Status must remain active (not compacted)
+		expect(op.status).toBe("active");
+		expect(op.summary).toBeNull();
+
+		// But tool outputs should have been truncated
+		const resultBlocks = turn.toolResults?.content as unknown as Array<{
+			type: string;
+			content: string;
+		}>;
+		const bashResult = resultBlocks.find((b) => b.type === "tool_result");
+		expect(bashResult?.content.length).toBeLessThan(longContent.length);
+	});
+
+	it("uses failure-specific bash limit for failure-outcome operations", () => {
+		const failureLimit = TOOL_OUTPUT_TRUNCATION.failureBashMaxTokens * 4;
+		// Content exceeds the failure limit but stays within the normal bash limit
+		const contentBetweenLimits = "x".repeat(failureLimit + 100);
+
+		const failureTurn = makeTurn(0, [
+			{ name: "bash", id: "tu_bash_f", resultContent: contentBetweenLimits },
+		]);
+		const failureOp = makeOp({
+			id: 1,
+			status: "completed",
+			outcome: "failure",
+			score: 0.9,
+			turns: [failureTurn],
+		});
+
+		const successTurn = makeTurn(0, [
+			{ name: "bash", id: "tu_bash_s", resultContent: contentBetweenLimits },
+		]);
+		const successOp = makeOp({
+			id: 2,
+			status: "completed",
+			outcome: "success",
+			score: 0.9,
+			turns: [successTurn],
+		});
+
+		compact([failureOp, successOp], null);
+
+		const getContent = (turn: Turn) => {
+			const blocks = turn.toolResults?.content as unknown as Array<{
+				type: string;
+				content: string;
+			}>;
+			return blocks.find((b) => b.type === "tool_result")?.content ?? "";
+		};
+
+		const failureContent = getContent(failureTurn);
+		const successContent = getContent(successTurn);
+
+		// Failure op: content exceeds failureBashMaxTokens → truncated
+		expect(failureContent.length).toBeLessThan(contentBetweenLimits.length);
+		// Success op: content under normalLimit → not truncated
+		expect(successContent.length).toBe(contentBetweenLimits.length);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// truncateOperationOutputs — token count update
+// ---------------------------------------------------------------------------
+
+describe("truncateOperationOutputs — token count update", () => {
+	it("re-estimates turn.meta.tokens to reflect truncated content size", () => {
+		const bashBudget = TOOL_OUTPUT_TRUNCATION.bashMaxTokens * 4;
+		const largeOutput = Array.from({ length: 200 }, (_, i) => `line ${i}`).join("\n");
+		const longContent = `${largeOutput}\n${"x".repeat(bashBudget)}`;
+		// Estimate tokens for the un-truncated content (4 chars/token heuristic)
+		const untruncatedEstimate = Math.ceil(longContent.length / 4);
+
+		const turn = makeTurn(0, [{ name: "bash", id: "tu_bash", resultContent: longContent }]);
+		const op = makeOp({ turns: [turn] });
+
+		truncateOperationOutputs(op);
+
+		// After truncation, re-estimated tokens should be less than the un-truncated estimate
+		expect(turn.meta.tokens).toBeLessThan(untruncatedEstimate);
+		// And should reflect approximately the bash max tokens limit (some overhead for assistant
+		// content and the truncation marker lines)
+		expect(turn.meta.tokens).toBeLessThan(TOOL_OUTPUT_TRUNCATION.bashMaxTokens + 500);
+	});
+
+	it("re-estimates turn.meta.tokens even when no truncation was applied", () => {
+		const shortContent = "short output";
+		const turn = makeTurn(0, [{ name: "bash", id: "tu_bash", resultContent: shortContent }]);
+		const op = makeOp({ turns: [turn] });
+
+		truncateOperationOutputs(op);
+
+		// Token count should be re-estimated from actual content (small for short output)
+		expect(typeof turn.meta.tokens).toBe("number");
+		expect(turn.meta.tokens).toBeGreaterThan(0);
+		// For "short output" (12 chars = 3 tokens) + assistant overhead, should be much less than 100
+		expect(turn.meta.tokens).toBeLessThan(50);
+	});
 });

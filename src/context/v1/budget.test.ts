@@ -8,7 +8,7 @@ import {
 	operationTokens,
 } from "./budget.ts";
 import type { Operation } from "./types.ts";
-import { V1_BUDGET_ALLOCATIONS } from "./types.ts";
+import { MAX_SINGLE_OP_BUDGET_FRACTION, V1_BUDGET_ALLOCATIONS } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -410,5 +410,58 @@ describe("budget (stage entry point)", () => {
 		budget(ops, 1000, 200_000);
 
 		expect(ops[0]?.status).toBe("archived");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Per-operation cap (MAX_SINGLE_OP_BUDGET_FRACTION)
+// ---------------------------------------------------------------------------
+
+describe("enforceBudget — per-operation cap", () => {
+	it("archives a completed op that individually exceeds the per-op cap", () => {
+		const WINDOW = 10_000;
+		const opBudget = Math.floor(WINDOW * V1_BUDGET_ALLOCATIONS.activeOperations); // 2500
+		const perOpCap = Math.floor(opBudget * MAX_SINGLE_OP_BUDGET_FRACTION); // 1250
+
+		const active = makeOpWithTurns(0, 100, "active");
+		// This op exceeds the per-op cap (1300 > 1250)
+		const oversizedOp = makeOpWithTurns(1, perOpCap + 50, "completed");
+		oversizedOp.score = 1.0; // high score — would be retained by normal logic
+
+		const result = enforceBudget([active, oversizedOp], 500, WINDOW);
+
+		// Despite having budget remaining (100 active + 500 sys = 600 < 2500), oversized op is archived
+		expect(result.retained.some((op) => op.id === 1)).toBe(false);
+		expect(result.archived.some((op) => op.id === 1)).toBe(true);
+	});
+
+	it("retains a completed op within the per-op cap", () => {
+		const WINDOW = 10_000;
+		const opBudget = Math.floor(WINDOW * V1_BUDGET_ALLOCATIONS.activeOperations); // 2500
+		const perOpCap = Math.floor(opBudget * MAX_SINGLE_OP_BUDGET_FRACTION); // 1250
+
+		const active = makeOpWithTurns(0, 100, "active");
+		// This op is within the per-op cap (1200 <= 1250)
+		const normalOp = makeOpWithTurns(1, perOpCap - 50, "completed");
+		normalOp.score = 1.0;
+
+		const result = enforceBudget([active, normalOp], 500, WINDOW);
+
+		expect(result.retained.some((op) => op.id === 1)).toBe(true);
+		expect(result.archived).toHaveLength(0);
+	});
+
+	it("active operations are not subject to the per-op cap", () => {
+		const WINDOW = 10_000;
+		const opBudget = Math.floor(WINDOW * V1_BUDGET_ALLOCATIONS.activeOperations); // 2500
+		const perOpCap = Math.floor(opBudget * MAX_SINGLE_OP_BUDGET_FRACTION); // 1250
+
+		// Active op exceeds the per-op cap — should still be retained
+		const hugeActive = makeOpWithTurns(0, perOpCap * 3, "active");
+
+		const result = enforceBudget([hugeActive], 0, WINDOW);
+
+		expect(result.retained.some((op) => op.id === 0)).toBe(true);
+		expect(result.archived).toHaveLength(0);
 	});
 });

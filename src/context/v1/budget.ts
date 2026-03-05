@@ -15,7 +15,12 @@
  * See docs/context-pipeline-v1.md §4.4 for the full specification.
  */
 
-import { type BudgetUtilization, type Operation, V1_BUDGET_ALLOCATIONS } from "./types.ts";
+import {
+	type BudgetUtilization,
+	MAX_SINGLE_OP_BUDGET_FRACTION,
+	type Operation,
+	V1_BUDGET_ALLOCATIONS,
+} from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Token estimation
@@ -96,8 +101,18 @@ export function enforceBudget(
 
 	let usedTokens = activeOps.reduce((sum, op) => sum + operationTokens(op), 0);
 
+	// Per-operation cap: no single completed/compacted operation may consume more than this
+	// fraction of the operation budget, preventing large failure-output turns from monopolizing
+	// the history zone even when budget technically remains.
+	const perOpCap = Math.floor(operationBudget * MAX_SINGLE_OP_BUDGET_FRACTION);
+
 	for (const op of completed) {
 		const tokens = operationTokens(op);
+		// Archive operations that individually exceed the per-op cap regardless of budget remaining
+		if (tokens > perOpCap) {
+			archived.push(op);
+			continue;
+		}
 		if (usedTokens + tokens <= operationBudget) {
 			retained.push(op);
 			usedTokens += tokens;

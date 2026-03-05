@@ -10,8 +10,41 @@
  */
 
 import { renderCompactSummary } from "./templates.ts";
-import type { Operation } from "./types.ts";
+import type { Operation, Turn } from "./types.ts";
 import { COMPACTION_SCORE_THRESHOLD, TOOL_OUTPUT_TRUNCATION } from "./types.ts";
+
+/** Characters-per-token heuristic (matches budget.ts). */
+const CHARS_PER_TOKEN = 4;
+
+/**
+ * Re-estimate token count for a turn after tool output truncation.
+ * Updates turn.meta.tokens so budget.ts sees the post-truncation size.
+ */
+function reestimateTurnTokens(turn: Turn): number {
+	let tokens = 0;
+	for (const block of turn.assistant.content) {
+		if (block.type === "text") {
+			tokens += Math.ceil(block.text.length / CHARS_PER_TOKEN);
+		} else {
+			// tool_use block: fixed overhead
+			tokens += 20;
+		}
+	}
+	if (turn.toolResults !== null) {
+		for (const block of turn.toolResults.content as unknown[]) {
+			if (
+				typeof block !== "object" ||
+				block === null ||
+				(block as { type?: unknown }).type !== "tool_result"
+			) {
+				continue;
+			}
+			const content = (block as { content: string }).content;
+			tokens += Math.ceil(content.length / CHARS_PER_TOKEN);
+		}
+	}
+	return tokens;
+}
 
 // ---------------------------------------------------------------------------
 // Tool output truncation helpers
@@ -69,13 +102,19 @@ function truncateGlob(content: string): string {
 /**
  * Apply tool-specific truncation to a tool result content string.
  * Tools not listed here are returned unchanged.
+ *
+ * @param bashMaxTokens - Override for bash token limit (e.g. use failureBashMaxTokens for failure ops).
  */
-export function truncateToolOutput(toolName: string, content: string): string {
+export function truncateToolOutput(
+	toolName: string,
+	content: string,
+	bashMaxTokens = TOOL_OUTPUT_TRUNCATION.bashMaxTokens,
+): string {
 	switch (toolName) {
 		case "bash":
 			return truncateWithLines(
 				content,
-				TOOL_OUTPUT_TRUNCATION.bashMaxTokens,
+				bashMaxTokens,
 				TOOL_OUTPUT_TRUNCATION.bashKeepFirstLines,
 				TOOL_OUTPUT_TRUNCATION.bashKeepLastLines,
 			);
@@ -113,9 +152,16 @@ export function compactOperation(op: Operation): void {
  *
  * For each turn, builds a map of tool_use_id → tool_name from the assistant message,
  * then truncates any tool_result content whose tool exceeds its budget.
- * Mutates the turn messages in-place.
+ * Failure-outcome operations use a more aggressive bash token limit.
+ * Mutates the turn messages in-place and updates turn.meta.tokens.
  */
 export function truncateOperationOutputs(op: Operation): void {
+	// Failure operations get a tighter bash limit to prevent overflow from large test outputs
+	const bashMaxTokens =
+		op.outcome === "failure"
+			? TOOL_OUTPUT_TRUNCATION.failureBashMaxTokens
+			: TOOL_OUTPUT_TRUNCATION.bashMaxTokens;
+
 	for (const turn of op.turns) {
 		// Build id → name map from assistant tool_use blocks
 		const toolNameById = new Map<string, string>();
@@ -143,8 +189,11 @@ export function truncateOperationOutputs(op: Operation): void {
 			const toolName = toolNameById.get(resultBlock.tool_use_id);
 			if (toolName === undefined) continue;
 
-			resultBlock.content = truncateToolOutput(toolName, resultBlock.content);
+			resultBlock.content = truncateToolOutput(toolName, resultBlock.content, bashMaxTokens);
 		}
+
+		// Update cached token count to reflect truncated content so budget.ts sees the real size
+		turn.meta.tokens = reestimateTurnTokens(turn);
 	}
 }
 
@@ -155,7 +204,7 @@ export function truncateOperationOutputs(op: Operation): void {
 /**
  * Compact stage: process all operations.
  *
- * - Active operations are always skipped (never compacted or truncated here).
+ * - Active operations are truncated (but never compacted) to cap large tool outputs.
  * - Completed/in-progress operations with score < COMPACTION_SCORE_THRESHOLD are compacted.
  * - Operations with score >= COMPACTION_SCORE_THRESHOLD have tool outputs truncated.
  * - Already-compacted or archived operations are left unchanged.
@@ -165,8 +214,11 @@ export function truncateOperationOutputs(op: Operation): void {
  */
 export function compact(operations: Operation[], activeOperationId: number | null): void {
 	for (const op of operations) {
-		// Never touch the active operation
-		if (op.id === activeOperationId) continue;
+		if (op.id === activeOperationId) {
+			// Active operation: apply truncation only (never compact — it's still in progress)
+			truncateOperationOutputs(op);
+			continue;
+		}
 
 		// Skip already-processed states
 		if (op.status === "compacted" || op.status === "archived") continue;
