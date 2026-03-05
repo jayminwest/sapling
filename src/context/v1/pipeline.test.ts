@@ -2,9 +2,8 @@
  * Tests for SaplingPipelineV1 — the orchestrating v1 context pipeline class.
  */
 
-import { beforeEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import type { Message } from "../../types.ts";
-import { resetOperationIdCounter } from "./ingest.ts";
 import { extractTurnHint, SaplingPipelineV1 } from "./pipeline.ts";
 
 // ---------------------------------------------------------------------------
@@ -64,10 +63,6 @@ function makeInput(messages: Message[]): Parameters<SaplingPipelineV1["process"]
 // ---------------------------------------------------------------------------
 
 describe("SaplingPipelineV1", () => {
-	beforeEach(() => {
-		resetOperationIdCounter();
-	});
-
 	describe("constructor", () => {
 		it("initializes with empty operation registry", () => {
 			const pipeline = makePipeline();

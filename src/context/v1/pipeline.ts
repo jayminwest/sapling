@@ -40,6 +40,7 @@ export interface PipelineOptions {
 export class SaplingPipelineV1 {
 	private operations: Operation[] = [];
 	private activeOperationId: number | null = null;
+	private nextOperationId = 1;
 	private readonly windowSize: number;
 	private readonly verbose: boolean;
 	private lastState: PipelineState | null = null;
@@ -68,9 +69,15 @@ export class SaplingPipelineV1 {
 
 		// ── Stage 1: Ingest ────────────────────────────────────────────────────
 		// Extract turns from messages and assign them to operations.
-		const ingestResult = ingest(messages, this.operations, this.activeOperationId);
+		const ingestResult = ingest(
+			messages,
+			this.operations,
+			this.activeOperationId,
+			this.nextOperationId,
+		);
 		this.operations = ingestResult.operations;
 		this.activeOperationId = ingestResult.activeOperationId;
+		this.nextOperationId = ingestResult.nextOperationId;
 
 		if (this.verbose) {
 			const activeOp = this.operations.find((op) => op.id === this.activeOperationId);

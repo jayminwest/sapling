@@ -2,7 +2,7 @@
  * Tests for the v1 context pipeline Ingest stage.
  */
 
-import { beforeEach, describe, expect, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import type { Message } from "../../types.ts";
 import {
 	detectBoundary,
@@ -15,7 +15,6 @@ import {
 	inferOutcome,
 	ingest,
 	ingestTurn,
-	resetOperationIdCounter,
 } from "./ingest.ts";
 import type { Operation, Turn } from "./types.ts";
 
@@ -444,13 +443,9 @@ describe("inferOutcome", () => {
 // ---------------------------------------------------------------------------
 
 describe("ingestTurn", () => {
-	beforeEach(() => {
-		resetOperationIdCounter();
-	});
-
 	it("creates first operation when none exist", () => {
 		const turn = makeTurn(0, ["read"], ["src/foo.ts"]);
-		const result = ingestTurn([], null, turn);
+		const result = ingestTurn([], null, turn, 1);
 
 		expect(result.operations).toHaveLength(1);
 		expect(result.operations[0]?.status).toBe("active");
@@ -462,8 +457,8 @@ describe("ingestTurn", () => {
 		const t1 = makeTurn(0, ["read"], ["src/foo.ts"]);
 		const t2 = makeTurn(1, ["read"], ["src/foo.ts"]); // same phase, same file
 
-		const r1 = ingestTurn([], null, t1);
-		const r2 = ingestTurn(r1.operations, r1.activeOperationId, t2);
+		const r1 = ingestTurn([], null, t1, 1);
+		const r2 = ingestTurn(r1.operations, r1.activeOperationId, t2, r1.nextOperationId);
 
 		expect(r2.operations).toHaveLength(1);
 		expect(r2.operations[0]?.turns).toHaveLength(2);
@@ -475,12 +470,12 @@ describe("ingestTurn", () => {
 		// read -> write transition (0.35) + different files (0.30) = 0.65 >= 0.5
 		const t2 = makeTurn(1, ["write"], ["src/bar.ts"], { timestamp: now + 100 });
 
-		const r1 = ingestTurn([], null, t1);
+		const r1 = ingestTurn([], null, t1, 1);
 		// Manually set the active op's tools and files
 		r1.operations[0]?.tools.add("read");
 		r1.operations[0]?.files.add("src/foo.ts");
 
-		const r2 = ingestTurn(r1.operations, r1.activeOperationId, t2);
+		const r2 = ingestTurn(r1.operations, r1.activeOperationId, t2, r1.nextOperationId);
 
 		expect(r2.operations).toHaveLength(2);
 		expect(r2.operations[0]?.status).toBe("completed");
@@ -493,11 +488,11 @@ describe("ingestTurn", () => {
 		const t1 = makeTurn(0, ["read"], ["src/a.ts"], { timestamp: now });
 		const t2 = makeTurn(1, ["write"], ["src/b.ts"], { timestamp: now + 100 });
 
-		const r1 = ingestTurn([], null, t1);
+		const r1 = ingestTurn([], null, t1, 1);
 		r1.operations[0]?.tools.add("read");
 		r1.operations[0]?.files.add("src/a.ts");
 
-		const r2 = ingestTurn(r1.operations, r1.activeOperationId, t2);
+		const r2 = ingestTurn(r1.operations, r1.activeOperationId, t2, r1.nextOperationId);
 
 		expect(r2.operations[0]?.outcome).not.toBe("in_progress");
 	});
@@ -508,10 +503,6 @@ describe("ingestTurn", () => {
 // ---------------------------------------------------------------------------
 
 describe("ingest", () => {
-	beforeEach(() => {
-		resetOperationIdCounter();
-	});
-
 	it("processes a sequence of messages into operations", () => {
 		const messages: Message[] = [
 			makeAssistantMsg([{ name: "read", path: "src/a.ts" }]),
@@ -520,7 +511,7 @@ describe("ingest", () => {
 			makeUserMsg([{ id: "tu_read" }], "content b"),
 		];
 
-		const result = ingest(messages, [], null);
+		const result = ingest(messages, [], null, 1);
 
 		expect(result.operations).toHaveLength(1);
 		expect(result.operations[0]?.turns).toHaveLength(2);
@@ -532,8 +523,8 @@ describe("ingest", () => {
 			makeUserMsg([{ id: "tu_read" }], "content"),
 		];
 
-		const r1 = ingest(messages, [], null);
-		const r2 = ingest(messages, r1.operations, r1.activeOperationId);
+		const r1 = ingest(messages, [], null, 1);
+		const r2 = ingest(messages, r1.operations, r1.activeOperationId, r1.nextOperationId);
 
 		// No new turns — registry should be unchanged
 		expect(r2.operations).toHaveLength(r1.operations.length);
@@ -551,14 +542,14 @@ describe("ingest", () => {
 			makeUserMsg([{ id: "tu_read2" }], "content b"),
 		];
 
-		const r1 = ingest(messages1, [], null);
-		const r2 = ingest(messages2, r1.operations, r1.activeOperationId);
+		const r1 = ingest(messages1, [], null, 1);
+		const r2 = ingest(messages2, r1.operations, r1.activeOperationId, r1.nextOperationId);
 
 		expect(r2.operations[0]?.turns).toHaveLength(2);
 	});
 
 	it("starts with empty operations when no messages", () => {
-		const result = ingest([], [], null);
+		const result = ingest([], [], null, 1);
 		expect(result.operations).toHaveLength(0);
 		expect(result.activeOperationId).toBeNull();
 	});
@@ -590,7 +581,7 @@ describe("ingest", () => {
 		const newUser = makeUserMsg([{ id: "tu_edit" }], "done");
 		const messages: Message[] = [syntheticAssistant, syntheticAck, newAssistant, newUser];
 
-		const result = ingest(messages, [compactedOp], 1);
+		const result = ingest(messages, [compactedOp], 1, 2);
 
 		// The new turn should be ingested (not silently dropped)
 		const totalTurns = result.operations.reduce((sum, op) => sum + op.turns.length, 0);
@@ -618,7 +609,7 @@ describe("ingest", () => {
 		const newUser = makeUserMsg([{ id: "tu_bash" }], "tests passed");
 		const messages: Message[] = [activeAssistant, activeUser, newAssistant, newUser];
 
-		const result = ingest(messages, [archivedOp, activeOp], 2);
+		const result = ingest(messages, [archivedOp, activeOp], 2, 3);
 
 		const totalTurns = result.operations.reduce((sum, op) => sum + op.turns.length, 0);
 		// archived: 2, active: 1 existing + 1 new = 4 total
@@ -631,7 +622,7 @@ describe("ingest", () => {
 			makeAssistantMsg([{ name: "read", path: "src/a.ts" }]),
 			makeUserMsg([{ id: "tu_read" }], "content a"),
 		];
-		const r1 = ingest(messages1, [], null);
+		const r1 = ingest(messages1, [], null, 1);
 
 		// Mark the operation as compacted (simulate compact stage)
 		const compactedOps = r1.operations.map((op) => ({
@@ -650,7 +641,7 @@ describe("ingest", () => {
 		const newUser = makeUserMsg([{ id: "tu_write" }], "written");
 		const messages2: Message[] = [syntheticAssistant, syntheticAck, newAssistant, newUser];
 
-		const r2 = ingest(messages2, compactedOps, r1.activeOperationId);
+		const r2 = ingest(messages2, compactedOps, r1.activeOperationId, r1.nextOperationId);
 
 		// There should be at least one new turn in the result (the write turn)
 		const totalTurns = r2.operations.reduce((sum, op) => sum + op.turns.length, 0);
