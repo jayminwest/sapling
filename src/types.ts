@@ -169,6 +169,8 @@ export interface RunOptions {
 	json?: boolean;
 	guardsFile?: string;
 	rpcMode?: boolean;
+	/** Path to a Unix socket for external getState queries (--rpc-socket). */
+	rpcSocket?: string;
 }
 
 // ─── Context Types ────────────────────────────────────────────────────────────

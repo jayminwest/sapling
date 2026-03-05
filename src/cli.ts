@@ -15,6 +15,7 @@ import { EventEmitter } from "./hooks/events.ts";
 import { HookManager } from "./hooks/manager.ts";
 import { runLoop } from "./loop.ts";
 import { RpcServer } from "./rpc/server.ts";
+import { RpcSocketServer } from "./rpc/socket.ts";
 import { createDefaultRegistry } from "./tools/index.ts";
 import type { EventConfig, LlmClient, LoopOptions, RunOptions, SaplingConfig } from "./types.ts";
 
@@ -94,10 +95,27 @@ export async function runCommand(
 
 	const eventEmitter = new EventEmitter(config.json);
 
-	// RPC mode: open stdin as a control channel for mid-task steering
-	const rpcServer = opts.rpcMode
-		? new RpcServer(Bun.stdin.stream() as ReadableStream<Uint8Array>, eventEmitter)
-		: undefined;
+	// RPC mode: open stdin as a control channel for mid-task steering.
+	// Also create an RpcServer for state tracking when --rpc-socket is provided
+	// without --mode rpc (uses an empty stream — no stdin control channel).
+	let rpcServer: RpcServer | undefined;
+	if (opts.rpcMode) {
+		rpcServer = new RpcServer(Bun.stdin.stream() as ReadableStream<Uint8Array>, eventEmitter);
+	} else if (opts.rpcSocket) {
+		const emptyStream = new ReadableStream<Uint8Array>({
+			start(c) {
+				c.close();
+			},
+		});
+		rpcServer = new RpcServer(emptyStream, eventEmitter);
+	}
+
+	// Socket server: allows external tools (e.g. ov inspect) to query agent state.
+	let socketServer: RpcSocketServer | undefined;
+	if (opts.rpcSocket && rpcServer) {
+		socketServer = new RpcSocketServer(rpcServer);
+		await socketServer.start(opts.rpcSocket);
+	}
 
 	const loopOptions: LoopOptions = {
 		task: prompt,
@@ -112,5 +130,9 @@ export async function runCommand(
 		contextWindowSize: config.contextWindow,
 	};
 
-	return runLoop(client, tools, loopOptions);
+	try {
+		return await runLoop(client, tools, loopOptions);
+	} finally {
+		await socketServer?.stop();
+	}
 }

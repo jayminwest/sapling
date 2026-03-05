@@ -103,7 +103,7 @@ export class RpcServer {
 	}
 
 	/** Return a snapshot of the current agent state. */
-	private getSnapshot(): AgentStateSnapshot {
+	getSnapshot(): AgentStateSnapshot {
 		const snap: AgentStateSnapshot = { status: this.agentStatus };
 		if (this.agentCurrentTool !== undefined) {
 			snap.currentTool = this.agentCurrentTool;
