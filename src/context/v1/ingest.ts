@@ -329,6 +329,54 @@ export function inferOutcome(operation: Operation): Operation["outcome"] {
 }
 
 // ---------------------------------------------------------------------------
+// Dependency computation
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute dependsOn IDs for a newly created operation.
+ *
+ * Two detection strategies:
+ * 1. Artifact overlap: if a previous operation produced artifacts (via write/edit)
+ *    that the new operation touches, the new op depends on that prior op.
+ * 2. Investigate→fix chain: if the immediately preceding completed operation ended
+ *    in failure, the new op likely exists to fix it — add it as a dependency.
+ *
+ * @param newOpFiles - Files touched by the first turn of the new operation.
+ * @param prevOps    - All operations finalized before the new one.
+ */
+export function computeDependsOn(newOpFiles: Set<string>, prevOps: Operation[]): number[] {
+	const deps = new Set<number>();
+
+	// Strategy 1: file-level artifact dependency
+	for (const op of prevOps) {
+		if (op.artifacts.length === 0) continue;
+		const opArtifacts = new Set(op.artifacts);
+		for (const f of newOpFiles) {
+			if (opArtifacts.has(f)) {
+				deps.add(op.id);
+				break;
+			}
+		}
+	}
+
+	// Strategy 2: investigate→fix chain
+	// The last non-active operation is the one just finalized before this new op.
+	let lastCompleted: Operation | undefined;
+	for (let i = prevOps.length - 1; i >= 0; i--) {
+		const op = prevOps[i];
+		if (op !== undefined && op.status !== "active") {
+			lastCompleted = op;
+			break;
+		}
+	}
+	if (lastCompleted !== undefined && lastCompleted.outcome === "failure") {
+		deps.add(lastCompleted.id);
+	}
+
+	return [...deps];
+}
+
+// ---------------------------------------------------------------------------
 // Operation registry management
 // ---------------------------------------------------------------------------
 
@@ -444,8 +492,9 @@ export function ingestTurn(
 	if (isBoundary) {
 		// Finalize active operation (copy to avoid mutating the original array element)
 		updatedOps[activeIdx] = finalizeOperation(Object.assign({}, activeOp));
-		// Create new operation
+		// Create new operation and populate dependsOn based on artifact overlap / error chain
 		const newOp = createOperation(turn);
+		newOp.dependsOn = computeDependsOn(newOp.files, updatedOps);
 		updatedOps.push(newOp);
 		return {
 			operations: updatedOps,
