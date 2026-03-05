@@ -48,6 +48,7 @@ export interface PipelineOptions {
 export class SaplingPipelineV1 {
 	private operations: Operation[] = [];
 	private activeOperationId: number | null = null;
+	private nextOperationId = 1;
 	private readonly windowSize: number;
 	private readonly verbose: boolean;
 	private lastState: PipelineState | null = null;
@@ -76,16 +77,17 @@ export class SaplingPipelineV1 {
 			throw new Error("Pipeline.process: messages array must not be empty");
 		}
 
-		// Build shared context and run all registered stages
-		const ctx: StageContext = {
-			input,
-			windowSize: this.windowSize,
-			verbose: this.verbose,
-			operations: this.operations,
-			activeOperationId: this.activeOperationId,
-			budgetUtil: null,
-			output: null,
-		};
+		// ── Stage 1: Ingest ────────────────────────────────────────────────────
+		// Extract turns from messages and assign them to operations.
+		const ingestResult = ingest(
+			messages,
+			this.operations,
+			this.activeOperationId,
+			this.nextOperationId,
+		);
+		this.operations = ingestResult.operations;
+		this.activeOperationId = ingestResult.activeOperationId;
+		this.nextOperationId = ingestResult.nextOperationId;
 
 		this.registry.run(ctx);
 

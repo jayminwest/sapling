@@ -332,18 +332,10 @@ export function inferOutcome(operation: Operation): Operation["outcome"] {
 // Operation registry management
 // ---------------------------------------------------------------------------
 
-let _nextOperationId = 1;
-
-/** Reset the operation ID counter (for tests). */
-export function resetOperationIdCounter(): void {
-	_nextOperationId = 1;
-}
-
 /**
- * Create a new operation with the given first turn.
+ * Create a new operation with the given first turn and explicit ID.
  */
-function createOperation(turn: Turn): Operation {
-	const id = _nextOperationId++;
+function createOperation(turn: Turn, id: number): Operation {
 	const op: Operation = {
 		id,
 		status: "active",
@@ -398,6 +390,8 @@ export interface IngestResult {
 	operations: Operation[];
 	/** The ID of the currently active operation (null only when no turns have been ingested). */
 	activeOperationId: number | null;
+	/** The next available operation ID (instance-owned counter). */
+	nextOperationId: number;
 }
 
 /**
@@ -408,28 +402,33 @@ export interface IngestResult {
  * 2. Compute boundary signals relative to the active operation.
  * 3. If boundary detected: finalize active op, create new op with this turn.
  * 4. Otherwise: add turn to active op.
+ *
+ * @param nextOperationId - The next available operation ID (owned by the pipeline instance).
  */
 export function ingestTurn(
 	operations: Operation[],
 	activeOperationId: number | null,
 	turn: Turn,
+	nextOperationId: number,
 ): IngestResult {
 	// No active operation — start fresh
 	if (activeOperationId === null || operations.length === 0) {
-		const newOp = createOperation(turn);
+		const newOp = createOperation(turn, nextOperationId);
 		return {
 			operations: [...operations, newOp],
 			activeOperationId: newOp.id,
+			nextOperationId: nextOperationId + 1,
 		};
 	}
 
 	const activeIdx = operations.findIndex((op) => op.id === activeOperationId);
 	if (activeIdx === -1) {
 		// Active op not found — create new
-		const newOp = createOperation(turn);
+		const newOp = createOperation(turn, nextOperationId);
 		return {
 			operations: [...operations, newOp],
 			activeOperationId: newOp.id,
+			nextOperationId: nextOperationId + 1,
 		};
 	}
 
@@ -445,11 +444,12 @@ export function ingestTurn(
 		// Finalize active operation (copy to avoid mutating the original array element)
 		updatedOps[activeIdx] = finalizeOperation(Object.assign({}, activeOp));
 		// Create new operation
-		const newOp = createOperation(turn);
+		const newOp = createOperation(turn, nextOperationId);
 		updatedOps.push(newOp);
 		return {
 			operations: updatedOps,
 			activeOperationId: newOp.id,
+			nextOperationId: nextOperationId + 1,
 		};
 	}
 
@@ -458,6 +458,7 @@ export function ingestTurn(
 	return {
 		operations: updatedOps,
 		activeOperationId: activeOperationId,
+		nextOperationId: nextOperationId,
 	};
 }
 
@@ -469,11 +470,14 @@ export function ingestTurn(
  *
  * This is designed to be called incrementally: pass the full message array
  * each time, and it will identify which turns are new since last ingest.
+ *
+ * @param nextOperationId - The next available operation ID (owned by the pipeline instance).
  */
 export function ingest(
 	messages: Message[],
 	existingOperations: Operation[],
 	activeOperationId: number | null,
+	nextOperationId: number,
 ): IngestResult {
 	const allTurns = extractTurns(messages);
 
@@ -495,10 +499,11 @@ export function ingest(
 	let result: IngestResult = {
 		operations: existingOperations,
 		activeOperationId,
+		nextOperationId,
 	};
 
 	for (const turn of newTurns) {
-		result = ingestTurn(result.operations, result.activeOperationId, turn);
+		result = ingestTurn(result.operations, result.activeOperationId, turn, result.nextOperationId);
 	}
 
 	return result;
