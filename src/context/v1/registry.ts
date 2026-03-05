@@ -103,9 +103,15 @@ export class StageRegistry {
 const ingestStage: PipelineStage = {
 	name: "ingest",
 	execute(ctx: StageContext): void {
-		const result = ingest(ctx.input.messages, ctx.operations, ctx.activeOperationId);
+		const result = ingest(
+			ctx.input.messages,
+			ctx.operations,
+			ctx.activeOperationId,
+			ctx.nextOperationId ?? 1,
+		);
 		ctx.operations = result.operations;
 		ctx.activeOperationId = result.activeOperationId;
+		ctx.nextOperationId = result.nextOperationId;
 
 		if (ctx.verbose) {
 			const activeOp = ctx.operations.find((op) => op.id === ctx.activeOperationId);

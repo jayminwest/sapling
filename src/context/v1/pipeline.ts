@@ -77,23 +77,24 @@ export class SaplingPipelineV1 {
 			throw new Error("Pipeline.process: messages array must not be empty");
 		}
 
-		// ── Stage 1: Ingest ────────────────────────────────────────────────────
-		// Extract turns from messages and assign them to operations.
-		const ingestResult = ingest(
-			messages,
-			this.operations,
-			this.activeOperationId,
-			this.nextOperationId,
-		);
-		this.operations = ingestResult.operations;
-		this.activeOperationId = ingestResult.activeOperationId;
-		this.nextOperationId = ingestResult.nextOperationId;
+		// Build the shared stage context and run all pipeline stages.
+		const ctx: StageContext = {
+			input,
+			windowSize: this.windowSize,
+			verbose: this.verbose,
+			operations: this.operations,
+			activeOperationId: this.activeOperationId,
+			nextOperationId: this.nextOperationId,
+			budgetUtil: null,
+			output: null,
+		};
 
 		this.registry.run(ctx);
 
 		// Sync mutable state back from context
 		this.operations = ctx.operations;
 		this.activeOperationId = ctx.activeOperationId;
+		this.nextOperationId = ctx.nextOperationId ?? this.nextOperationId;
 
 		if (!ctx.output) {
 			throw new Error(

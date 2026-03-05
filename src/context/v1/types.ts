@@ -367,6 +367,8 @@ export interface StageContext {
 	operations: Operation[];
 	/** Currently active operation ID — updated by the ingest stage. */
 	activeOperationId: number | null;
+	/** Next operation ID counter — updated by the ingest stage. Defaults to 1 if not provided. */
+	nextOperationId?: number;
 	/** Budget result — set by the budget stage, consumed by the render stage. */
 	budgetUtil: BudgetUtilization | null;
 	/** Final pipeline output — set by the render stage. */

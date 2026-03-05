@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import * as authModule from "./commands/auth.ts";
 import {
 	DEFAULT_CONFIG,
 	findProjectConfigDir,
@@ -129,8 +130,13 @@ describe("loadConfig", () => {
 	});
 
 	it("leaves apiKey undefined when neither ANTHROPIC_API_KEY nor ANTHROPIC_AUTH_TOKEN is set", async () => {
-		const config = await loadConfig();
-		expect(config.apiKey).toBeUndefined();
+		const spy = spyOn(authModule, "readAuthStore").mockResolvedValue({ providers: {} });
+		try {
+			const config = await loadConfig();
+			expect(config.apiKey).toBeUndefined();
+		} finally {
+			spy.mockRestore();
+		}
 	});
 });
 
