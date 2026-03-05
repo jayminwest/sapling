@@ -65,4 +65,18 @@ describe("WriteTool", () => {
 		expect(def.input_schema.required).toContain("file_path");
 		expect(def.input_schema.required).toContain("content");
 	});
+
+	it("dry-run returns description without writing", async () => {
+		const p = join(testDir, "nodisk.txt");
+		tool.dryRun = true;
+		const result = await tool.execute({ file_path: p, content: "secret" }, testDir);
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("[dry-run]");
+		expect(result.content).toContain("nodisk.txt");
+		expect(await Bun.file(p).exists()).toBe(false);
+	});
+
+	it("dry-run default is false", () => {
+		expect(new WriteTool().dryRun).toBe(false);
+	});
 });

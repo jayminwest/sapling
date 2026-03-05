@@ -7,6 +7,7 @@ const DEFAULT_FILE_LIMIT = 500;
 
 export class GlobTool implements Tool {
 	readonly name = "glob";
+	dryRun = false;
 	readonly description =
 		"Find files matching a glob pattern. Returns paths sorted by modification time (most recent first). " +
 		"Truncates beyond 500 files by default.";
@@ -33,6 +34,13 @@ export class GlobTool implements Tool {
 		}
 
 		const searchDir = typeof input.path === "string" ? input.path : cwd;
+
+		if (this.dryRun) {
+			return {
+				content: `[dry-run] Would glob pattern "${pattern}" in ${searchDir}`,
+				metadata: { tokensEstimate: Math.ceil(pattern.length / 4) },
+			};
+		}
 
 		const glob = new Bun.Glob(pattern);
 		const matchedPaths: string[] = [];

@@ -100,4 +100,21 @@ describe("EditTool", () => {
 		expect(def.input_schema.required).toContain("old_string");
 		expect(def.input_schema.required).toContain("new_string");
 	});
+
+	it("dry-run returns description without editing", async () => {
+		const p = join(testDir, "nochange.txt");
+		await Bun.write(p, "original content");
+		tool.dryRun = true;
+		const result = await tool.execute(
+			{ file_path: p, old_string: "original", new_string: "replaced" },
+			testDir,
+		);
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("[dry-run]");
+		expect(await Bun.file(p).text()).toBe("original content");
+	});
+
+	it("dry-run default is false", () => {
+		expect(new EditTool().dryRun).toBe(false);
+	});
 });

@@ -4,6 +4,7 @@ import type { Tool, ToolResult } from "./types.ts";
 
 export class EditTool implements Tool {
 	readonly name = "edit";
+	dryRun = false;
 	readonly description =
 		"Perform an exact string replacement in a file. " +
 		"Fails if old_string is not found or appears more than once. " +
@@ -45,6 +46,14 @@ export class EditTool implements Tool {
 		}
 
 		const resolved = isAbsolute(filePath) ? filePath : resolve(cwd, filePath);
+
+		if (this.dryRun) {
+			return {
+				content: `[dry-run] Would edit ${resolved}: replace old_string with new_string`,
+				metadata: { filePath: resolved, tokensEstimate: Math.ceil(newString.length / 4) },
+			};
+		}
+
 		const file = Bun.file(resolved);
 		const exists = await file.exists();
 		if (!exists) {

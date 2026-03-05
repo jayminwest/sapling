@@ -5,6 +5,7 @@ import type { Tool, ToolResult } from "./types.ts";
 
 export class WriteTool implements Tool {
 	readonly name = "write";
+	dryRun = false;
 	readonly description =
 		"Write content to a file, creating it or overwriting if it exists. " +
 		"Creates parent directories as needed. Uses atomic write.";
@@ -36,6 +37,15 @@ export class WriteTool implements Tool {
 		}
 
 		const resolved = isAbsolute(filePath) ? filePath : resolve(cwd, filePath);
+
+		if (this.dryRun) {
+			const byteSize = new TextEncoder().encode(content).length;
+			return {
+				content: `[dry-run] Would write ${byteSize} bytes to ${resolved}`,
+				metadata: { filePath: resolved, tokensEstimate: Math.ceil(content.length / 4) },
+			};
+		}
+
 		const dir = dirname(resolved);
 		await mkdir(dir, { recursive: true });
 

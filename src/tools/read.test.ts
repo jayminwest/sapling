@@ -77,4 +77,16 @@ describe("ReadTool", () => {
 		expect(def.name).toBe("read");
 		expect(def.input_schema.required).toContain("file_path");
 	});
+
+	it("dry-run returns description without reading", async () => {
+		tool.dryRun = true;
+		const result = await tool.execute({ file_path: "/etc/passwd" }, testDir);
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("[dry-run]");
+		expect(result.content).toContain("/etc/passwd");
+	});
+
+	it("dry-run default is false", () => {
+		expect(new ReadTool().dryRun).toBe(false);
+	});
 });

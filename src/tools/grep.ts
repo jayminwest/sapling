@@ -49,6 +49,7 @@ type OutputMode = "files_with_matches" | "content" | "count";
 
 export class GrepTool implements Tool {
 	readonly name = "grep";
+	dryRun = false;
 	readonly description =
 		"Search file contents using ripgrep (rg). " +
 		"Three output modes: files_with_matches (default), content, count. " +
@@ -93,6 +94,14 @@ export class GrepTool implements Tool {
 		}
 
 		const searchPath = typeof input.path === "string" ? input.path : cwd;
+
+		if (this.dryRun) {
+			return {
+				content: `[dry-run] Would search for pattern "${pattern}" in ${searchPath}`,
+				metadata: { tokensEstimate: Math.ceil(pattern.length / 4) },
+			};
+		}
+
 		const outputMode: OutputMode =
 			input.output_mode === "content" || input.output_mode === "count"
 				? input.output_mode

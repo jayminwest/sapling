@@ -76,4 +76,16 @@ describe("GrepTool", () => {
 		expect(result.isError).toBeFalsy();
 		expect(result.metadata?.truncated).toBe(true);
 	});
+
+	it("dry-run returns description without searching", async () => {
+		tool.dryRun = true;
+		const result = await tool.execute({ pattern: "findme" }, testDir);
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("[dry-run]");
+		expect(result.content).toContain("findme");
+	});
+
+	it("dry-run default is false", () => {
+		expect(new GrepTool().dryRun).toBe(false);
+	});
 });

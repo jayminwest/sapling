@@ -6,6 +6,7 @@ const DEFAULT_LINE_LIMIT = 2000;
 
 export class ReadTool implements Tool {
 	readonly name = "read";
+	dryRun = false;
 	readonly description =
 		"Read a file from the filesystem. Returns content with line numbers (like cat -n). " +
 		"Supports offset and limit for large files. Truncates files beyond 2000 lines by default.";
@@ -36,6 +37,13 @@ export class ReadTool implements Tool {
 		}
 
 		const resolved = isAbsolute(filePath) ? filePath : resolve(cwd, filePath);
+
+		if (this.dryRun) {
+			return {
+				content: `[dry-run] Would read: ${resolved}`,
+				metadata: { tokensEstimate: Math.ceil(resolved.length / 4), filePath: resolved },
+			};
+		}
 
 		const offset = typeof input.offset === "number" ? Math.max(1, input.offset) : 1;
 		const limit =

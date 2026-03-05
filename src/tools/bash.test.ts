@@ -78,4 +78,16 @@ describe("BashTool", () => {
 		expect(def.name).toBe("bash");
 		expect(def.input_schema.required).toContain("command");
 	});
+
+	it("dry-run returns description without executing", async () => {
+		tool.dryRun = true;
+		const result = await tool.execute({ command: "rm -rf /" }, testDir);
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("[dry-run]");
+		expect(result.content).toContain("rm -rf /");
+	});
+
+	it("dry-run default is false", () => {
+		expect(new BashTool().dryRun).toBe(false);
+	});
 });

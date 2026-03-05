@@ -59,4 +59,16 @@ describe("GlobTool", () => {
 		expect(def.name).toBe("glob");
 		expect(def.input_schema.required).toContain("pattern");
 	});
+
+	it("dry-run returns description without scanning", async () => {
+		tool.dryRun = true;
+		const result = await tool.execute({ pattern: "**/*.ts" }, testDir);
+		expect(result.isError).toBeFalsy();
+		expect(result.content).toContain("[dry-run]");
+		expect(result.content).toContain("**/*.ts");
+	});
+
+	it("dry-run default is false", () => {
+		expect(new GlobTool().dryRun).toBe(false);
+	});
 });

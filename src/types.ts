@@ -203,6 +203,7 @@ export interface Tool {
 	name: string;
 	description: string;
 	inputSchema: JsonSchema;
+	dryRun?: boolean;
 	execute(input: Record<string, unknown>, cwd: string): Promise<ToolResult>;
 	toDefinition(): ToolDefinition;
 }

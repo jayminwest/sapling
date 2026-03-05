@@ -6,6 +6,7 @@ const DEFAULT_OUTPUT_LIMIT = 50_000;
 
 export class BashTool implements Tool {
 	readonly name = "bash";
+	dryRun = false;
 	readonly description =
 		"Execute a shell command. Captures stdout and stderr. Returns exit code and output.";
 
@@ -28,6 +29,13 @@ export class BashTool implements Tool {
 		const command = input.command;
 		if (typeof command !== "string" || command.trim() === "") {
 			throw new ToolError("command must be a non-empty string", "INVALID_INPUT");
+		}
+
+		if (this.dryRun) {
+			return {
+				content: `[dry-run] Would execute: ${command}`,
+				metadata: { tokensEstimate: Math.ceil(command.length / 4) },
+			};
 		}
 
 		const timeoutMs = typeof input.timeout === "number" ? input.timeout : DEFAULT_TIMEOUT_MS;
