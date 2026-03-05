@@ -298,8 +298,31 @@
 			"sapling-424d",
 			"sapling-fb98"
 		],
-		"status": "active",
+		"status": "completed",
 		"createdAt": "2026-03-04T23:38:55.822Z",
+		"completedAt": "2026-03-04T23:48:34.423Z"
+	},
+	{
+		"id": "group-0d578ddc",
+		"name": "sapling-extensibility-batch",
+		"memberIssueIds": [
+			"sapling-3945",
+			"sapling-4b46",
+			"sapling-9f11",
+			"sapling-d5fe",
+			"sapling-7b8a",
+			"sapling-227b",
+			"sapling-5e18",
+			"sapling-6ebe",
+			"sapling-a43b",
+			"sapling-5756",
+			"sapling-687e",
+			"sapling-accc",
+			"sapling-2da7",
+			"sapling-9570"
+		],
+		"status": "active",
+		"createdAt": "2026-03-05T00:07:36.917Z",
 		"completedAt": null
 	}
 ]
