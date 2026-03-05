@@ -6,9 +6,10 @@ import {
 	enforceBudget,
 	estimateTokens,
 	operationTokens,
+	rebalanceBudget,
 } from "./budget.ts";
 import type { Operation } from "./types.ts";
-import { MAX_SINGLE_OP_BUDGET_FRACTION, V1_BUDGET_ALLOCATIONS } from "./types.ts";
+import { MAX_SINGLE_OP_BUDGET_FRACTION, V1_BUDGET_ALLOCATIONS, V1_ZONE_BOUNDS } from "./types.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -182,9 +183,12 @@ describe("enforceBudget", () => {
 	});
 
 	it("archives completed ops that exceed budget", () => {
-		// Very small window to force archiving
+		// Very small window to force archiving.
+		// Pass systemPromptTokens at the full system budget to suppress rebalancing
+		// so the test exercises the base 25% ops allocation.
 		const smallWindow = 2000;
-		const _smallOpBudget = Math.floor(smallWindow * V1_BUDGET_ALLOCATIONS.activeOperations); // 500
+		const smallOpBudget = Math.floor(smallWindow * V1_BUDGET_ALLOCATIONS.activeOperations); // 500
+		const smallSysBudget = Math.floor(smallWindow * V1_BUDGET_ALLOCATIONS.systemWithArchive); // 500
 
 		const active = makeOpWithTurns(0, 200, "active"); // 200 tokens
 		// These two together would exceed the 500-token budget
@@ -192,12 +196,19 @@ describe("enforceBudget", () => {
 		const completed2 = makeOpWithTurns(2, 200, "completed");
 		const completed3 = makeOpWithTurns(3, 200, "completed");
 
-		const result = enforceBudget([active, completed1, completed2, completed3], 100, smallWindow);
+		// Pass full system budget as systemPromptTokens → no surplus → no rebalancing
+		const result = enforceBudget(
+			[active, completed1, completed2, completed3],
+			smallSysBudget,
+			smallWindow,
+		);
 
 		// active (200) + at most one more 200-token op = 400 <= 500 budget
 		// second 200-token op: 400+200=600 > 500 → archived
 		expect(result.retained.some((op) => op.id === 0)).toBe(true); // active always kept
 		expect(result.archived.length).toBeGreaterThan(0);
+		// Sanity check that we used the expected base budget
+		expect(smallOpBudget).toBe(500);
 	});
 
 	it("sorts completed ops by score (highest first)", () => {
@@ -251,7 +262,9 @@ describe("enforceBudget", () => {
 			],
 		});
 
-		const result = enforceBudget([active, lowScore, highScore], 50, smallWindow);
+		// Pass full system budget to suppress rebalancing
+		const smallSysBudget = Math.floor(smallWindow * V1_BUDGET_ALLOCATIONS.systemWithArchive); // 300
+		const result = enforceBudget([active, lowScore, highScore], smallSysBudget, smallWindow);
 
 		// High score should be retained, low score should be archived
 		const retainedIds = result.retained.map((op) => op.id);
@@ -263,11 +276,18 @@ describe("enforceBudget", () => {
 
 	it("returns correct BudgetUtilization shape", () => {
 		const active = makeOpWithTurns(0, 500, "active");
+		// systemPromptTokens=5000 causes rebalancing: system surplus flows to ops
 		const result = enforceBudget([active], 5000, WINDOW);
 
 		expect(result.budget.windowSize).toBe(WINDOW);
-		expect(result.budget.systemWithArchive).toBe(Math.floor(WINDOW * 0.25));
-		expect(result.budget.headroom).toBe(Math.floor(WINDOW * 0.5));
+		// After rebalancing, systemWithArchive shrinks and headroom/ops grow
+		expect(result.budget.systemWithArchive).toBeLessThanOrEqual(Math.floor(WINDOW * 0.25));
+		expect(result.budget.systemWithArchive).toBeGreaterThanOrEqual(
+			Math.floor(WINDOW * V1_ZONE_BOUNDS.systemWithArchive.min),
+		);
+		expect(result.budget.headroom).toBeGreaterThanOrEqual(
+			Math.floor(WINDOW * V1_ZONE_BOUNDS.headroom.min),
+		);
 		expect(result.budget.utilization).toBeGreaterThanOrEqual(0);
 		expect(result.budget.utilization).toBeLessThanOrEqual(1);
 	});
@@ -364,7 +384,8 @@ describe("enforceArchiveBudget", () => {
 describe("budget (stage entry point)", () => {
 	it("marks over-budget operations as archived in-place", () => {
 		const smallWindow = 1000;
-		// OP budget = floor(1000 * 0.25) = 250 tokens
+		// OP budget = floor(1000 * 0.25) = 250 tokens (no rebalancing when sys is full)
+		const smallSysBudget = Math.floor(smallWindow * V1_BUDGET_ALLOCATIONS.systemWithArchive); // 250
 
 		const active = makeOpWithTurns(0, 100, "active"); // 100 tokens
 		const completed1 = makeOpWithTurns(1, 100, "completed"); // 100 tokens — fits (200 <= 250)
@@ -375,7 +396,8 @@ describe("budget (stage entry point)", () => {
 		completed2.score = 0.1;
 
 		const ops = [active, completed1, completed2];
-		budget(ops, 50, smallWindow);
+		// Pass full system budget → no surplus → no rebalancing
+		budget(ops, smallSysBudget, smallWindow);
 
 		// Active and highest-score completed should be retained
 		expect(ops[0]?.status).toBe("active");
@@ -420,6 +442,8 @@ describe("budget (stage entry point)", () => {
 describe("enforceBudget — per-operation cap", () => {
 	it("archives a completed op that individually exceeds the per-op cap", () => {
 		const WINDOW = 10_000;
+		// Pass full system budget to suppress rebalancing so the base per-op cap applies
+		const sysBudget = Math.floor(WINDOW * V1_BUDGET_ALLOCATIONS.systemWithArchive); // 2500
 		const opBudget = Math.floor(WINDOW * V1_BUDGET_ALLOCATIONS.activeOperations); // 2500
 		const perOpCap = Math.floor(opBudget * MAX_SINGLE_OP_BUDGET_FRACTION); // 1250
 
@@ -428,9 +452,10 @@ describe("enforceBudget — per-operation cap", () => {
 		const oversizedOp = makeOpWithTurns(1, perOpCap + 50, "completed");
 		oversizedOp.score = 1.0; // high score — would be retained by normal logic
 
-		const result = enforceBudget([active, oversizedOp], 500, WINDOW);
+		// Pass systemPromptTokens = sysBudget so no surplus → operationBudget stays at base 2500
+		const result = enforceBudget([active, oversizedOp], sysBudget, WINDOW);
 
-		// Despite having budget remaining (100 active + 500 sys = 600 < 2500), oversized op is archived
+		// Despite having budget remaining, oversized op exceeds per-op cap → archived
 		expect(result.retained.some((op) => op.id === 1)).toBe(false);
 		expect(result.archived.some((op) => op.id === 1)).toBe(true);
 	});
@@ -463,5 +488,133 @@ describe("enforceBudget — per-operation cap", () => {
 
 		expect(result.retained.some((op) => op.id === 0)).toBe(true);
 		expect(result.archived).toHaveLength(0);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// rebalanceBudget
+// ---------------------------------------------------------------------------
+
+describe("rebalanceBudget", () => {
+	const WINDOW = 200_000;
+	const defaultSystem = Math.floor(WINDOW * V1_BUDGET_ALLOCATIONS.systemWithArchive); // 50_000
+	const defaultOps = Math.floor(WINDOW * V1_BUDGET_ALLOCATIONS.activeOperations); // 50_000
+	const defaultHead = Math.floor(WINDOW * V1_BUDGET_ALLOCATIONS.headroom); // 100_000
+
+	it("returns defaults when system prompt fills its budget", () => {
+		// systemActualTokens >= systemBudget → no surplus → no rebalancing
+		const zones = rebalanceBudget(WINDOW, defaultSystem);
+
+		expect(zones.systemWithArchive).toBe(defaultSystem);
+		expect(zones.activeOperations).toBe(defaultOps);
+		expect(zones.headroom).toBe(defaultHead);
+	});
+
+	it("flows system surplus to activeOperations up to its max", () => {
+		// Small system prompt → lots of surplus → ops should grow
+		const zones = rebalanceBudget(WINDOW, 0);
+
+		const opsMax = Math.floor(WINDOW * V1_ZONE_BOUNDS.activeOperations.max);
+		expect(zones.activeOperations).toBe(opsMax);
+		expect(zones.systemWithArchive).toBeLessThan(defaultSystem);
+	});
+
+	it("flows remaining surplus to headroom after ops hits max", () => {
+		// System prompt is 0 → maximum surplus; ops hits max, remainder goes to headroom
+		const zones = rebalanceBudget(WINDOW, 0);
+
+		const opsMax = Math.floor(WINDOW * V1_ZONE_BOUNDS.activeOperations.max);
+		const headMax = Math.floor(WINDOW * V1_ZONE_BOUNDS.headroom.max);
+		// ops hits max
+		expect(zones.activeOperations).toBe(opsMax);
+		// headroom gets any remaining surplus
+		expect(zones.headroom).toBeGreaterThanOrEqual(defaultHead);
+		expect(zones.headroom).toBeLessThanOrEqual(headMax);
+	});
+
+	it("never drops systemWithArchive below its min bound", () => {
+		// Even with 0 system prompt tokens, system zone stays above sysMin
+		const sysMin = Math.floor(WINDOW * V1_ZONE_BOUNDS.systemWithArchive.min);
+		const zones = rebalanceBudget(WINDOW, 0);
+
+		expect(zones.systemWithArchive).toBeGreaterThanOrEqual(sysMin);
+	});
+
+	it("zone totals sum to approximately windowSize", () => {
+		for (const sysTokens of [0, 5_000, 25_000, 50_000, 70_000]) {
+			const zones = rebalanceBudget(WINDOW, sysTokens);
+			const total = zones.systemWithArchive + zones.activeOperations + zones.headroom;
+			// Allow ±3 tokens for floor() rounding across three zones
+			expect(Math.abs(total - WINDOW)).toBeLessThanOrEqual(3);
+		}
+	});
+
+	it("ops zone grows proportionally to system surplus", () => {
+		// With half the system budget used, ops should gain roughly half the max surplus
+		const halfSystem = Math.floor(defaultSystem / 2); // 25_000
+		const fullSystem = rebalanceBudget(WINDOW, defaultSystem).activeOperations;
+		const halfSystem_ = rebalanceBudget(WINDOW, halfSystem).activeOperations;
+
+		// ops with half system usage should be > default ops
+		expect(halfSystem_).toBeGreaterThan(fullSystem);
+	});
+
+	it("does not exceed opsMax or headMax", () => {
+		const opsMax = Math.floor(WINDOW * V1_ZONE_BOUNDS.activeOperations.max);
+		const headMax = Math.floor(WINDOW * V1_ZONE_BOUNDS.headroom.max);
+		const zones = rebalanceBudget(WINDOW, 0);
+
+		expect(zones.activeOperations).toBeLessThanOrEqual(opsMax);
+		expect(zones.headroom).toBeLessThanOrEqual(headMax);
+	});
+
+	it("larger system prompt → less surplus → smaller ops budget", () => {
+		const small = rebalanceBudget(WINDOW, 1_000).activeOperations;
+		const large = rebalanceBudget(WINDOW, 40_000).activeOperations;
+
+		expect(small).toBeGreaterThanOrEqual(large);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// enforceBudget — rebalanced operation budget
+// ---------------------------------------------------------------------------
+
+describe("enforceBudget — rebalanced zone integration", () => {
+	it("retains more completed ops when system prompt is small", () => {
+		const WINDOW = 100_000;
+		// With tiny system prompt, ops budget grows from default 25K to up to 40K
+		const active = makeOpWithTurns(0, 5_000, "active");
+		// Fill with completed ops of 5000 tokens each (score descending)
+		const completed = Array.from({ length: 6 }, (_, i) =>
+			makeOp({
+				id: i + 1,
+				status: "completed",
+				score: 1.0 - i * 0.1,
+				turns: [
+					{
+						index: 0,
+						assistant: { role: "assistant", content: [] },
+						toolResults: null,
+						meta: {
+							tools: [],
+							files: [],
+							hasError: false,
+							hasDecision: false,
+							tokens: 5_000,
+							timestamp: 0,
+						},
+					},
+				],
+			}),
+		);
+
+		// Small system → rebalanced ops budget is larger
+		const smallSys = enforceBudget([active, ...completed], 2_000, WINDOW);
+		// Full system → ops budget stays at default 25K
+		const fullSys = enforceBudget([active, ...completed], 25_000, WINDOW);
+
+		// Smaller system prompt should result in at least as many retained ops
+		expect(smallSys.retained.length).toBeGreaterThanOrEqual(fullSys.retained.length);
 	});
 });

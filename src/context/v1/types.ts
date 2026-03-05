@@ -298,6 +298,21 @@ export const V1_BUDGET_ALLOCATIONS: Readonly<{
 	headroom: 0.5, // LLM output + safety margin
 } as const;
 
+/**
+ * Per-zone min/max fraction bounds used during dynamic budget rebalancing.
+ * Unused budget in underutilized zones is redistributed to zones that need more.
+ * min ensures each zone always receives a floor; max prevents monopolization.
+ */
+export const V1_ZONE_BOUNDS: Readonly<{
+	systemWithArchive: { min: number; max: number };
+	activeOperations: { min: number; max: number };
+	headroom: { min: number; max: number };
+}> = {
+	systemWithArchive: { min: 0.1, max: 0.35 },
+	activeOperations: { min: 0.15, max: 0.4 },
+	headroom: { min: 0.3, max: 0.6 },
+} as const;
+
 /** Tool output truncation thresholds (in tokens). */
 export const TOOL_OUTPUT_TRUNCATION: Readonly<{
 	bashMaxTokens: number;
