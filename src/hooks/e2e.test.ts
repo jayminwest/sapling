@@ -119,7 +119,7 @@ describe("guards.json end-to-end enforcement", () => {
 
 		const guardConfig = await loadGuardConfig(guardsPath);
 		expect(guardConfig).not.toBeNull();
-		const hookManager = new HookManager(guardConfig!);
+		const hookManager = new HookManager(guardConfig as GuardConfig);
 
 		// LLM tries bash (blocked), then responds done
 		const client = createMockClient([
@@ -145,7 +145,7 @@ describe("guards.json end-to-end enforcement", () => {
 
 		const guardConfig = await loadGuardConfig(guardsPath);
 		expect(guardConfig).not.toBeNull();
-		const hookManager = new HookManager(guardConfig!);
+		const hookManager = new HookManager(guardConfig as GuardConfig);
 
 		// LLM tries to write to a path outside the boundary
 		const outsidePath = "/tmp/sapling-guard-test-outside.txt";
@@ -172,7 +172,7 @@ describe("guards.json end-to-end enforcement", () => {
 
 		const guardConfig = await loadGuardConfig(guardsPath);
 		expect(guardConfig).not.toBeNull();
-		const hookManager = new HookManager(guardConfig!);
+		const hookManager = new HookManager(guardConfig as GuardConfig);
 
 		// LLM writes inside the boundary — should pass
 		const insidePath = join(testDir, "output.txt");
@@ -199,7 +199,7 @@ describe("guards.json end-to-end enforcement", () => {
 
 		const guardConfig = await loadGuardConfig(guardsPath);
 		expect(guardConfig).not.toBeNull();
-		const hookManager = new HookManager(guardConfig!);
+		const hookManager = new HookManager(guardConfig as GuardConfig);
 
 		const client = createMockClient([
 			mockToolUseResponse("bash", { command: "rm -rf /" }, "tc1"),
@@ -223,7 +223,7 @@ describe("guards.json end-to-end enforcement", () => {
 
 		const guardConfig = await loadGuardConfig(guardsPath);
 		expect(guardConfig).not.toBeNull();
-		const hookManager = new HookManager(guardConfig!);
+		const hookManager = new HookManager(guardConfig as GuardConfig);
 
 		const filePath = join(testDir, "out.txt");
 		const client = createMockClient([
@@ -248,7 +248,7 @@ describe("guards.json end-to-end enforcement", () => {
 
 		const guardConfig = await loadGuardConfig(guardsPath);
 		expect(guardConfig).not.toBeNull();
-		const hookManager = new HookManager(guardConfig!);
+		const hookManager = new HookManager(guardConfig as GuardConfig);
 
 		const filePath = join(testDir, "file.txt");
 		const client = createMockClient([
@@ -282,8 +282,8 @@ describe("guards.json end-to-end enforcement", () => {
 
 		const config = await loadGuardConfig(guardsPath);
 		expect(config).not.toBeNull();
-		expect(config!.rules).toHaveLength(1);
-		expect(config!.blockedTools).toEqual(["write"]);
+		expect((config as GuardConfig).rules).toHaveLength(1);
+		expect((config as GuardConfig).blockedTools).toEqual(["write"]);
 	});
 
 	// ── 9. HookManager preToolCall blocks via rules array in guards.json ──────
@@ -295,7 +295,7 @@ describe("guards.json end-to-end enforcement", () => {
 
 		const guardConfig = await loadGuardConfig(guardsPath);
 		expect(guardConfig).not.toBeNull();
-		const hookManager = new HookManager(guardConfig!);
+		const hookManager = new HookManager(guardConfig as GuardConfig);
 
 		const client = createMockClient([
 			mockToolUseResponse("bash", { command: "echo hi" }, "tc1"),

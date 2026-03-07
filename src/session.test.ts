@@ -37,7 +37,7 @@ describe("summarizePrompt", () => {
 
 	it("truncates after collapsing newlines", () => {
 		// Build a 201-char string after collapsing newlines
-		const prompt = "a".repeat(100) + "\n" + "b".repeat(100);
+		const prompt = `${"a".repeat(100)}\n${"b".repeat(100)}`;
 		const result = summarizePrompt(prompt);
 		expect(result).toBe(`${"a".repeat(100)} ${"b".repeat(99)}...`);
 	});

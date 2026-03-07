@@ -157,6 +157,7 @@ export interface RunOptions {
 	json?: boolean;
 	guardsFile?: string;
 	rpcMode?: boolean;
+	rpcSocket?: string;
 	dryRun?: boolean;
 }
 

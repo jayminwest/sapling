@@ -251,7 +251,7 @@ describe("overstory runtime E2E", () => {
 		// Verify the LLM received the custom system prompt
 		expect(client.calls.length).toBeGreaterThanOrEqual(1);
 		// The first call should use the custom prompt (or a pipeline-composed version containing it)
-		const firstCall = client.calls[0]!;
+		const firstCall = client.calls[0] as (typeof client.calls)[number];
 		expect(firstCall.systemPrompt).toContain("specialized code reviewer");
 	});
 
@@ -473,9 +473,7 @@ describe("overstory runtime E2E", () => {
 			// Parse all NDJSON lines, filtering for event lines (have `type` field)
 			const lines = stdout.trim().split("\n").filter(Boolean);
 			const allParsed = lines.map((line) => JSON.parse(line));
-			const events = allParsed.filter(
-				(e: Record<string, unknown>) => typeof e.type === "string",
-			);
+			const events = allParsed.filter((e: Record<string, unknown>) => typeof e.type === "string");
 
 			// Verify event sequence
 			const types = events.map((e: Record<string, unknown>) => e.type);

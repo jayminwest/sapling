@@ -316,11 +316,11 @@ describe("DEFAULT_SIGNALS", () => {
 
 	it("default signal weights match EVAL_WEIGHTS", () => {
 		const byName = Object.fromEntries(DEFAULT_SIGNALS.map((s) => [s.name, s.weight]));
-		expect(byName["recency"]).toBeCloseTo(EVAL_WEIGHTS.recency);
-		expect(byName["fileOverlap"]).toBeCloseTo(EVAL_WEIGHTS.fileOverlap);
-		expect(byName["causalDependency"]).toBeCloseTo(EVAL_WEIGHTS.causalDependency);
-		expect(byName["outcomeSignificance"]).toBeCloseTo(EVAL_WEIGHTS.outcomeSignificance);
-		expect(byName["operationType"]).toBeCloseTo(EVAL_WEIGHTS.operationType);
+		expect(byName.recency).toBeCloseTo(EVAL_WEIGHTS.recency);
+		expect(byName.fileOverlap).toBeCloseTo(EVAL_WEIGHTS.fileOverlap);
+		expect(byName.causalDependency).toBeCloseTo(EVAL_WEIGHTS.causalDependency);
+		expect(byName.outcomeSignificance).toBeCloseTo(EVAL_WEIGHTS.outcomeSignificance);
+		expect(byName.operationType).toBeCloseTo(EVAL_WEIGHTS.operationType);
 	});
 });
 
