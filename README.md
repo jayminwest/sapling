@@ -170,10 +170,6 @@ Sapling uses the Anthropic SDK (`@anthropic-ai/sdk`) for LLM calls. It supports 
 
 Sapling is part of the [os-eco](https://github.com/jayminwest/os-eco) AI agent tooling ecosystem.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/jayminwest/os-eco/main/branding/logo.png" alt="os-eco" width="444" />
-</p>
-
 ## Environment Variables
 
 | Variable | Default | Description |
