@@ -35,9 +35,18 @@
 	},
 	"scripts": {
 		"test": "bun test",
-		"lint": "biome check .",
+		"lint": "biome check --error-on-warnings .",
 		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",
+		"check:agents": "bun run scripts/validate-agents-md.ts",
+		"check:dups": "bunx jscpd",
+		"check:deps": "knip --dependencies",
+		"check:size": "bun run scripts/check-file-sizes.ts",
+		"check:debt": "bun run scripts/check-debt-markers.ts",
+		"check:coverage": "bun run scripts/check-coverage.ts",
+		"check:ci-parity": "bun scripts/check-ci-parity.ts",
+		"check:all": "bun scripts/check-all.ts",
+		"verify": "bun run check:all",
 		"version:bump": "bun scripts/version-bump.ts"
 	},
 	"dependencies": {
@@ -47,7 +56,9 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.4.5",
 		"@types/bun": "latest",
-		"typescript": "^5.9.0"
+		"knip": "^6.14.2",
+		"typescript": "^5.9.0",
+		"yaml": "^2.6.0"
 	},
 	"optionalDependencies": {
 		"@anthropic-ai/sdk": "^0.39.0"

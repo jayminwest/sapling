@@ -25,5 +25,13 @@
 		"enabled": true,
 		"indentStyle": "tab",
 		"lineWidth": 100
-	}
+	},
+	"overrides": [
+		{
+			"includes": ["scripts/check-all.ts", "scripts/check-ci-parity.ts"],
+			"formatter": {
+				"enabled": false
+			}
+		}
+	]
 }

@@ -1,0 +1,18 @@
+{
+	"_comment": "Per-file line-count budgets enforced by scripts/check-file-sizes.ts. New `.ts`/`.tsx` files default to `threshold` lines. Files listed in `budgets` are grandfathered at their commit-time line count and may not grow past their entry — the ratchet only goes DOWN. Loosening (raising `threshold` or a budget entry) requires an explicit commit by a human; the script never auto-edits this file.",
+	"threshold": 500,
+	"budgets": {
+		"src/bench/scenarios.ts": 2125,
+		"src/config.test.ts": 517,
+		"src/context/v1/budget.test.ts": 755,
+		"src/context/v1/compact.test.ts": 722,
+		"src/context/v1/ingest.test.ts": 1170,
+		"src/context/v1/ingest.ts": 727,
+		"src/context/v1/pipeline.test.ts": 579,
+		"src/context/v1/registry.test.ts": 698,
+		"src/context/v1/render.test.ts": 677,
+		"src/loop.test.ts": 705,
+		"src/loop.ts": 676,
+		"src/orchestrator-surface.test.ts": 880
+	}
+}

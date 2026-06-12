@@ -1,0 +1,6 @@
+{
+	"_comment": "Coverage floors enforced by scripts/check-coverage.ts against the `All files` row of Bun's text coverage reporter. The ratchet only goes UP \u2014 raise floors as coverage improves; lowering requires deleting tests, which should be a conscious decision with a tracker reference. The script never auto-edits this file: loosening requires an explicit commit by a human.",
+	"functions": 83,
+	"lines": 85,
+	"packages": {}
+}
