@@ -1,10 +1,11 @@
 version: '1'
 domains:
-  - architecture
-  - sapling
-  - agents
-  - context-pipeline
-  - minimax
+  architecture: {}
+  sapling: {}
+  agents: {}
+  context-pipeline: {}
+  minimax: {}
+  quality: {}
 governance:
   max_entries: 100
   warn_entries: 150
