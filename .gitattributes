@@ -5,3 +5,4 @@
 .canopy/prompts.jsonl merge=union
 .canopy/schemas.jsonl merge=union
 .sapling/session.jsonl merge=union
+.seeds/plans.jsonl merge=union
