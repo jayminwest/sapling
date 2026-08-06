@@ -50,6 +50,8 @@
 		"version:bump": "bun scripts/version-bump.ts"
 	},
 	"dependencies": {
+		"@earendil-works/pi-agent-core": "0.83.0",
+		"@earendil-works/pi-coding-agent": "0.83.0",
 		"chalk": "^5.6.2",
 		"commander": "^14.0.3"
 	},
