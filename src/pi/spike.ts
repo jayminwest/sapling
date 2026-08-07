@@ -91,7 +91,7 @@ export interface PiSpikeResult {
 	finalText: string;
 }
 
-function assistantText(message: AgentMessage | undefined): string {
+export function assistantText(message: AgentMessage | undefined): string {
 	if (!message || message.role !== "assistant") return "";
 	return message.content
 		.filter((part) => part.type === "text")
@@ -99,7 +99,7 @@ function assistantText(message: AgentMessage | undefined): string {
 		.join("");
 }
 
-function lastAssistant(messages: AgentMessage[]): AgentMessage | undefined {
+export function lastAssistant(messages: AgentMessage[]): AgentMessage | undefined {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (message?.role === "assistant") return message;
@@ -107,7 +107,7 @@ function lastAssistant(messages: AgentMessage[]): AgentMessage | undefined {
 	return undefined;
 }
 
-function probePayload(payload: unknown): PayloadProbe {
+export function probePayload(payload: unknown): PayloadProbe {
 	const body = JSON.stringify(payload) ?? "";
 	const record = payload as { messages?: unknown[]; system?: unknown };
 	// pi 0.83.0 serializes the Anthropic system prompt as an array of blocks

@@ -23,7 +23,14 @@ import { join } from "node:path";
 import * as piAgentCore from "@earendil-works/pi-agent-core";
 import * as pi from "@earendil-works/pi-coding-agent";
 import { cleanupTempDir, createTempDir } from "../test-helpers.ts";
-import { runPiSpike, SPIKE_MODEL_ID, SPIKE_MODEL_PROVIDER } from "./spike.ts";
+import {
+	assistantText,
+	lastAssistant,
+	probePayload,
+	runPiSpike,
+	SPIKE_MODEL_ID,
+	SPIKE_MODEL_PROVIDER,
+} from "./spike.ts";
 
 const PINNED_PI_VERSION = "0.83.0";
 
@@ -72,6 +79,93 @@ describe("pi SDK surface tripwires (sapling-bec1)", () => {
 
 const SKIP = !process.env.SAPLING_INTEGRATION_TESTS || !process.env.ANTHROPIC_API_KEY;
 const SPIKE_SYSTEM_PROMPT = "You are a test harness. Answer tersely.";
+
+describe("spike payload/message helpers (sapling-bec1)", () => {
+	it("probePayload reads a plain-string system prompt", () => {
+		const probe = probePayload({ system: "plain system", messages: [{ role: "user" }] });
+		expect(probe.systemText).toBe("plain system");
+		expect(probe.messageCount).toBe(1);
+	});
+
+	it("probePayload joins text blocks and skips non-text in an array system prompt", () => {
+		const probe = probePayload({
+			system: [
+				{ type: "text", text: "part one " },
+				{ type: "image", text: "ignored" },
+				{ type: "text", text: "part two" },
+			],
+			messages: [],
+		});
+		expect(probe.systemText).toBe("part one part two");
+		expect(probe.messageCount).toBe(0);
+	});
+
+	it("probePayload reports missing fields without throwing", () => {
+		const probe = probePayload({});
+		expect(probe.systemText).toBeUndefined();
+		expect(probe.messageCount).toBe(-1);
+	});
+
+	it("lastAssistant walks past trailing non-assistant messages and handles none", () => {
+		const assistant = {
+			role: "assistant",
+			content: [{ type: "text", text: "hi" }],
+		} as unknown as import("@earendil-works/pi-agent-core").AgentMessage;
+		const user = {
+			role: "user",
+			content: "q",
+		} as unknown as import("@earendil-works/pi-agent-core").AgentMessage;
+		expect(lastAssistant([assistant, user])).toBe(assistant);
+		expect(lastAssistant([user])).toBeUndefined();
+		expect(lastAssistant([])).toBeUndefined();
+	});
+
+	it("assistantText concatenates text parts and is empty for non-assistant input", () => {
+		const assistant = {
+			role: "assistant",
+			content: [
+				{ type: "text", text: "a" },
+				{ type: "toolCall", text: "skip" },
+				{ type: "text", text: "b" },
+			],
+		} as unknown as import("@earendil-works/pi-agent-core").AgentMessage;
+		expect(assistantText(assistant)).toBe("ab");
+		expect(assistantText(undefined)).toBe("");
+	});
+});
+
+describe("pi SDK in-process spike (offline error path, sapling-bec1)", () => {
+	it("runs the full spike harness against an invalid key: hooks fire, error surfaces without throwing", async () => {
+		const workDir = await createTempDir();
+		try {
+			const sentinel = "SPIKE_SENTINEL_offline: never reaches a model.";
+			const result = await runPiSpike({
+				workDir,
+				apiKey: "sk-ant-invalid-sapling-spike-offline",
+				systemPrompt: SPIKE_SYSTEM_PROMPT,
+				rewriteSentinel: sentinel,
+				prompts: ["This call must fail before any model responds."],
+			});
+			// The context hook fired and the rewrite reached the serialized payload
+			// even though the provider call itself failed.
+			expect(result.contextHookMessageCounts.length).toBeGreaterThanOrEqual(1);
+			expect(result.payloads.length).toBe(result.contextHookMessageCounts.length);
+			const payload = result.payloads[0];
+			expect(payload).toBeDefined();
+			expect(payload?.messageCount).toBe(1);
+			expect(payload?.body).toContain("SPIKE_SENTINEL_offline");
+			expect(payload?.systemText).toContain(SPIKE_SYSTEM_PROMPT);
+			// Plan constraint (e): the SDK does not throw on a hard provider
+			// error; classification reads stopReason from the final message.
+			expect(result.finalStopReason).toBe("error");
+			expect(result.finalErrorMessage).toBeTruthy();
+			// Non-destructive: the session history keeps the original prompt.
+			expect(JSON.stringify(result.finalMessages)).toContain("must fail before any model");
+		} finally {
+			await cleanupTempDir(workDir);
+		}
+	}, 60_000);
+});
 
 describe.skipIf(SKIP)("pi SDK in-process spike (live, sapling-bec1)", () => {
 	it("context hook replaces the provider-visible messages per turn, non-destructively", async () => {
