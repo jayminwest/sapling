@@ -63,6 +63,6 @@
 		"yaml": "^2.6.0"
 	},
 	"optionalDependencies": {
-		"@anthropic-ai/sdk": "^0.39.0"
+		"@anthropic-ai/sdk": "^0.116.0"
 	}
 }
